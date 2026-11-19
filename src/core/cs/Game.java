@@ -296,7 +296,9 @@ public final class Game {
         setLevel(rLevel);
     }
     /** in horizontal mode the number pad is turned too: true while digits mean directions (playing, no menu) */
-    public boolean turnDigits() { return orient == 1 && state == ST_PLAY && menu == M_NONE && !buyOpen; }
+    public boolean turnDigits() { return turned && state == ST_PLAY && menu == M_NONE && !buyOpen; }
+    /** set by the phone canvas: the picture is shown turned a quarter on the screen (the phone is held sideways) */
+    public boolean turned;
 
     void applyGfx(Render rr) {
         rr.mipBias = gfx == 0 ? 1 : 0;

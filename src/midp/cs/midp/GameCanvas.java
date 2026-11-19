@@ -8,9 +8,15 @@ public final class GameCanvas extends Canvas implements Runnable {
     static final int GW = 240, GH = 320;   // portrait: the E52 screen is 240x320
     private final CSMidlet mid;
     private int[] screen = new int[GW * GH];   // the game's frame: 240x320, or 320x240 in horizontal mode
-    private int[] rotBuf;                       // horizontal mode: the frame turned onto the 240x320 screen
-    private volatile int[] shown;               // what paint() draws (always 240x320)
-    private int orient;                         // orientation the buffers are set up for
+    private int[] rotBuf;                       // the frame turned a quarter (when it does not match the screen's shape)
+    private volatile int[] shown;               // what paint() draws
+    private volatile int shW, shH;              // its size
+    private int orient = -1;                    // orientation the buffers are set up for
+    private boolean land;                       // the phone's screen is wider than tall (E71/E72/E63, E6, N8 sideways...)
+    private boolean turned;                     // frame is turned a quarter on the screen: arrows and digits are turned too
+    private volatile int pendingOrient = -1;    // screen shape changed (phone rotated / slider opened)
+    private int[] scaled, xmap;                 // the frame stretched to fill bigger (or shrunk for smaller) screens
+    private int scW, scH, scBW;
     private final java.util.Hashtable downAs = new java.util.Hashtable();   // physical key -> code used at press
     private Game game;
     private MidpSys sys;
@@ -41,7 +47,9 @@ public final class GameCanvas extends Canvas implements Runnable {
         try {
             sys = new MidpSys(mid);
             Sys.s = sys;
+            land = getWidth() > getHeight();
             game = new Game(GW, GH, screen);
+            if (land) game.orient = 1;   // first start on a landscape phone: landscape picture (saved setting wins)
             game.init();
         } catch (Throwable t) {
             error = "Ошибка запуска: " + t;
@@ -55,11 +63,16 @@ public final class GameCanvas extends Canvas implements Runnable {
             last = now;
             if (paused && (game == null || game.mp == null)) { try { Thread.sleep(100); } catch (InterruptedException e) { } continue; }   // online the match goes on for the others
             try {
+                if (pendingOrient >= 0) { game.orient = pendingOrient; pendingOrient = -1; }
                 if (game.orient != orient) setOrient(game.orient);
                 game.tick(dt);
                 if (paused) { try { Thread.sleep(30); } catch (InterruptedException e) { } continue; }   // hidden: keep the match going, skip drawing
                 game.draw();
-                if (orient == 1) { rotate(); shown = rotBuf; } else shown = screen;
+                int fw = orient == 1 ? GH : GW, fh = orient == 1 ? GW : GH;
+                int[] f = screen;
+                if (turned) { rotate(screen, fw, fh, rotBuf); f = rotBuf; int t = fw; fw = fh; fh = t; }
+                int[] sc = fit(f, fw, fh);
+                if (sc != null) { shown = sc; shW = scW; shH = scH; } else { shown = f; shW = fw; shH = fh; }
             } catch (OutOfMemoryError e) {
                 error = "Недостаточно памяти";
             } catch (Throwable t) {
@@ -75,34 +88,75 @@ public final class GameCanvas extends Canvas implements Runnable {
         }
     }
 
-    /** horizontal: phone turned left (keypad on the right) - game top is the right edge of the screen */
+    /** the picture's shape differs from the screen's (E52 held sideways, or a landscape phone held upright):
+     *  the phone is turned left (keypad on the right) - game top is the right edge of the screen */
     private void setOrient(int o) {
         orient = o;
-        if (o == 1) { screen = new int[GH * GW]; if (rotBuf == null) rotBuf = new int[GW * GH]; game.resize(GH, GW, screen); }
-        else { screen = new int[GW * GH]; rotBuf = null; game.resize(GW, GH, screen); }
+        if (o == 1) { screen = new int[GH * GW]; game.resize(GH, GW, screen); }
+        else { screen = new int[GW * GH]; game.resize(GW, GH, screen); }
+        turned = (o == 1) != land;
+        game.turned = turned;
+        rotBuf = turned ? new int[GW * GH] : null;
         downAs.clear();
     }
 
-    private void rotate() {
-        int[] in = screen, out = rotBuf;
-        int w = GH, h = GW;   // game frame 320x240
-        for (int y = 0; y < h; y++) {
-            int i = y * w, o = GW - 1 - y;
-            for (int x = 0; x < w; x++, o += GW) out[o] = in[i++];
+    /** fw x fh frame -> fh x fw, turned a quarter clockwise */
+    private static void rotate(int[] in, int fw, int fh, int[] out) {
+        for (int y = 0; y < fh; y++) {
+            int i = y * fw, o = fh - 1 - y;
+            for (int x = 0; x < fw; x++, o += fh) out[o] = in[i++];
         }
+    }
+
+    /** other Nokia screens: stretch (or shrink) the picture to fill the screen, keeping its shape.
+     *  null = the screen is about the frame's size, draw it as it is */
+    private int[] fit(int[] f, int fw, int fh) {
+        int w = getWidth(), h = getHeight();
+        if (w <= 0 || h <= 0) return null;
+        int k = Math.min(w * 256 / fw, h * 256 / fh);   // scale, 256 = 1:1
+        if (k >= 236 && k <= 300) return null;
+        int dw = fw * k / 256, dh = fh * k / 256;
+        if (dw < 16 || dh < 16) return null;
+        if (scaled == null || dw != scW || dh != scH || fw != scBW) {
+            scaled = null;
+            scaled = new int[dw * dh];
+            xmap = new int[dw];
+            for (int x = 0; x < dw; x++) xmap[x] = x * fw / dw;
+            scW = dw; scH = dh; scBW = fw;
+        }
+        int[] out = scaled, xm = xmap;
+        int prev = -1;
+        for (int y = 0, o = 0; y < dh; y++, o += dw) {
+            int sy = y * fh / dh;
+            if (sy == prev) { System.arraycopy(out, o - dw, out, o, dw); continue; }
+            prev = sy;
+            int b = sy * fw;
+            for (int x = 0; x < dw; x++) out[o + x] = f[b + xm[x]];
+        }
+        return out;
+    }
+
+    /** phone rotated (5800/N97/N8) or keyboard slid open (E7/N97): keep the picture the screen's shape */
+    protected void sizeChanged(int w, int h) {
+        boolean l = w > h;
+        if (game != null && l != land) { land = l; pendingOrient = l ? 1 : 0; }
+        else land = l;
+        orient = -1;   // rebuild the buffers for the new shape
     }
 
     protected void paint(Graphics g) {
         int w = getWidth(), h = getHeight();
-        ox = (w - GW) / 2; oy = (h - GH) / 2;
+        int[] buf = shown;
+        int bw = shW, bh = shH;
+        if (buf == null || bw <= 0) { g.setColor(0); g.fillRect(0, 0, w, h); bw = 0; bh = 0; }
+        ox = (w - bw) / 2; oy = (h - bh) / 2;
         if (ox != 0 || oy != 0) { g.setColor(0); g.fillRect(0, 0, w, h); }
         int sx = ox < 0 ? -ox : 0, sy = oy < 0 ? -oy : 0;
-        int dw = GW - sx, dh = GH - sy;
+        int dw = bw - sx, dh = bh - sy;
         if (dw > w) dw = w;
         if (dh > h) dh = h;
-        int[] buf = shown;
-        if (buf != null && dw > 0 && dh > 0)
-            g.drawRGB(buf, sy * GW + sx, GW, ox + sx, oy + sy, dw, dh, false);
+        if (buf != null && dw > 0 && dh > 0 && buf.length >= bw * bh)
+            g.drawRGB(buf, sy * bw + sx, bw, ox + sx, oy + sy, dw, dh, false);
         if (error != null) {
             g.setColor(0xFF4040);
             g.setFont(Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL));
@@ -157,7 +211,7 @@ public final class GameCanvas extends Canvas implements Runnable {
     protected void keyPressed(int k) {
         if (game == null) return;
         int c = canon(k);
-        if (orient == 1) { c = turn(c, game.turnDigits()); downAs.put(new Integer(k), new Integer(c)); }
+        if (turned) { c = turn(c, game.turnDigits()); downAs.put(new Integer(k), new Integer(c)); }
         if (game.rawKey(c)) return;
         if (k >= KEY_NUM0 && k <= KEY_NUM9 && game.wantsDigits()) { game.digit(k - KEY_NUM0); return; }
         game.keyMask(game.bindMask(c) | nav(c), true);
@@ -166,7 +220,7 @@ public final class GameCanvas extends Canvas implements Runnable {
     protected void keyReleased(int k) {
         if (game == null) return;
         int c = canon(k);
-        if (orient == 1) { Object o = downAs.remove(new Integer(k)); c = o != null ? ((Integer) o).intValue() : turn(c, false); }
+        if (turned) { Object o = downAs.remove(new Integer(k)); c = o != null ? ((Integer) o).intValue() : turn(c, false); }
         game.keyMask(game.bindMask(c) | nav(c), false);
     }
 
