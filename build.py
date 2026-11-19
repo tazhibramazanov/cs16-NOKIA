@@ -32,7 +32,12 @@ JARS = {
     'log4j-core-2.19.0.jar': 'org/apache/logging/log4j/log4j-core/2.19.0/log4j-core-2.19.0.jar',
     'kotlin-stdlib-1.9.0.jar': 'org/jetbrains/kotlin/kotlin-stdlib/1.9.0/kotlin-stdlib-1.9.0.jar',
 }
-JDK_URL = 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse'
+JDK_URLS = [   # tried in order; any JDK 17 with javac and jlink will do
+    ('Eclipse Temurin', 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse'),
+    ('Microsoft OpenJDK', 'https://aka.ms/download-jdk/microsoft-jdk-17-windows-x64.zip'),
+    ('Amazon Corretto', 'https://corretto.aws/downloads/latest/amazon-corretto-17-x64-windows-jdk.zip'),
+]
+UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
 
 def say(s=''): print(s, flush=True)
@@ -47,12 +52,14 @@ def fail(s):
 def step(n, s): say(); say('[%d/7] %s' % (n, s))
 
 
-def download(url, dst, label):
+def download(url, dst, label, must=True):
+    """must=False: return False instead of stopping the build (another source will be tried)"""
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     tmp = dst + '.part'
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(url, timeout=60) as r, open(tmp, 'wb') as f:
+            req = urllib.request.Request(url, headers={'User-Agent': UA})   # some sites refuse Python's default name (HTTP 403)
+            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, 'wb') as f:
                 total = int(r.headers.get('Content-Length') or 0); got = 0; last = 0
                 while True:
                     b = r.read(1 << 16)
@@ -63,10 +70,13 @@ def download(url, dst, label):
                         print('\r  %s: %d%% (%d из %d МБ)   ' % (label, got * 100 // total, got >> 20, total >> 20), end='', flush=True)
             print('\r  %s: готово%s' % (label, ' ' * 30), flush=True)
             os.replace(tmp, dst)
-            return
+            return True
         except Exception as e:
-            say('\n  не получилось скачать (%s), ещё попытка...' % e)
+            say('\n  не получилось скачать (%s)%s' % (e, ', ещё попытка...' if attempt < 2 else ''))
             time.sleep(2)
+    try: os.remove(tmp)
+    except OSError: pass
+    if not must: return False
     fail('не удалось скачать ' + url + '\nПроверьте интернет и запустите сборку ещё раз.')
 
 
@@ -113,15 +123,24 @@ def find_jdk():
     if not WIN: fail('нужен JDK 11 или новее (javac и jlink). Установите его, например: sudo apt install openjdk-17-jdk')
     say('  Java не найдена — скачиваю JDK 17 (около 190 МБ, один раз)')
     z = os.path.join(CACHE, 'jdk17.zip')
-    if not os.path.exists(z): download(JDK_URL, z, 'JDK 17')
-    say('  распаковываю...')
-    with zipfile.ZipFile(z) as zf:
-        top = zf.namelist()[0].split('/')[0]
-        zf.extractall(CACHE)
-    h = os.path.join(CACHE, top)
-    if not jdk_ok(h): fail('скачанный JDK повреждён — удалите папку _cache и запустите ещё раз')
-    os.remove(z)
-    return h
+    for name, url in JDK_URLS:
+        if not os.path.exists(z):
+            say('  источник: ' + name)
+            if not download(url, z, 'JDK 17', must=False): continue
+        say('  распаковываю...')
+        try:
+            with zipfile.ZipFile(z) as zf:
+                top = zf.namelist()[0].split('/')[0]
+                zf.extractall(CACHE)
+            h = os.path.join(CACHE, top)
+        except Exception:
+            h = None
+        try: os.remove(z)
+        except OSError: pass
+        if h and jdk_ok(h): return h
+        say('  архив повреждён, пробую другой источник...')
+    fail('не удалось скачать Java ни с одного сайта.\n'
+         'Можно поставить её вручную: https://adoptium.net (Temurin 17, файл .msi) — и запустить сборку ещё раз.')
 
 
 def tool(jdk, name): return os.path.join(jdk, 'bin', name + EXE)
