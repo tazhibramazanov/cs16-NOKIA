@@ -24,4 +24,11 @@ if __name__=='__main__':
         nm=rel.replace('/','_').replace('-','_').lower()
         try: tot+=conv(f, os.path.join(out,nm))
         except Exception as e: print('ERR',rel,e)
+    # a few sounds live in Half-Life's own folder (valve/), not in cstrike/
+    for rel in ('items/ammopickup2.wav', 'items/gunpickup2.wav', 'items/weapondrop1.wav'):
+        nm = rel.replace('/', '_')
+        f = GAME + '/valve/sound/' + rel
+        if not os.path.exists(os.path.join(out, nm)) and os.path.exists(f):
+            try: tot += conv(f, os.path.join(out, nm))
+            except Exception as e: print('ERR', rel, e)
     print('total bytes',tot, len(glob.glob(out+'/*.wav')),'files')

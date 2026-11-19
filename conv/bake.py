@@ -7,8 +7,13 @@ HERE = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))) + '/'
    - v_*.mdl  -> first-person weapon frames (perspective, 320x240 screen space)
    - player models (+ merged p_ weapon) -> 8-direction billboard frames (orthographic)
 """
-import numpy as np, math, struct, sys, os
+import numpy as np, math, struct, sys, os, tempfile
 from PIL import Image
+
+def _preview(img, path):
+    """debug preview picture: only if a shots/ folder exists"""
+    import os
+    if os.path.isdir(os.path.dirname(path)): img.save(path)
 from mdl import MDL
 
 MD = GAME + '/cstrike/models/'
@@ -225,7 +230,7 @@ def bake_vm(name, outdir):
     r = anims[0][2][0]
     rgb = pal[idxs[r]]; mk = idxs[r] > 0
     bg = np.array(pv); bg[mk] = rgb[mk]
-    Image.fromarray(bg).save(os.path.join(outdir, '..', 'shots', 'vm_' + name + '.png'))
+    _preview(Image.fromarray(bg), os.path.join(outdir, '..', 'shots', 'vm_' + name + '.png'))
     return len(out)
 
 # ------------------------------------------------------------------ players
@@ -325,7 +330,7 @@ def bake_player(model, pweapon, outname, outdir):
     for k, r in enumerate(anims[1][2][1][:4] + anims[4][2][0][:4]):
         im = pal[idxs[r]]; mk = idxs[r] > 0; bg = np.full(im.shape, 90, np.uint8); bg[mk] = im[mk]
         sheet.paste(Image.fromarray(bg), (k * (W // PS), H // PS))
-    sheet.save(os.path.join(outdir, '..', 'shots', 'pl_' + outname + '.png'))
+    _preview(sheet, os.path.join(outdir, '..', 'shots', 'pl_' + outname + '.png'))
     return len(out)
 
 if __name__ == '__main__' and sys.argv[2] not in ('world', 'sil'):
@@ -383,7 +388,7 @@ def bake_world(outdir):
         for d in range(8):
             r = anims[an][2][d][0]; im = pal[idxs[r]]; mk = idxs[r] > 0; bg = np.full(im.shape, 90, np.uint8); bg[mk] = im[mk]
             sheet.paste(Image.fromarray(bg), (d * (W // PS), k * (H // PS)))
-    sheet.save(os.path.join(outdir, '..', 'shots', 'w_sheet.png'))
+    _preview(sheet, os.path.join(outdir, '..', 'shots', 'w_sheet.png'))
     return len(out)
 
 VM['m4a1s'] = [('idle', 'idle', 1), ('shoot', 'shoot1', 4, 12), ('reload', 'reload', 9), ('draw', 'draw', 4), ('attach', 'add_silencer', 6), ('detach', 'detach_silencer', 6)]
@@ -393,9 +398,9 @@ def bake_vm2(name, outdir):
     global MD
     if name in ('m4a1s', 'usps'):
         import shutil
-        src = MD + 'v_' + name[:-1] + '.mdl'; dst = '/tmp/v_' + name + '.mdl'
+        src = MD + 'v_' + name[:-1] + '.mdl'; dst = os.path.join(tempfile.gettempdir(), 'v_' + name + '.mdl')
         shutil.copy(src, dst)
-        old = MD; MD = '/tmp/'
+        old = MD; MD = tempfile.gettempdir() + os.sep
         try: return _orig_bake_vm(name, outdir)
         finally: MD = old
     return _orig_bake_vm(name, outdir)

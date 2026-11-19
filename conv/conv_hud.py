@@ -4,6 +4,11 @@ HERE = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))) + '/'
 
 import struct, numpy as np, sys, re
 from PIL import Image, ImageFont, ImageDraw
+
+def _preview(img, path):
+    """debug preview picture: only if a shots/ folder exists"""
+    import os
+    if os.path.isdir(os.path.dirname(path)): img.save(path)
 SP=GAME + '/cstrike/sprites/'
 def spr(path):
     d=open(path,'rb').read()
@@ -42,7 +47,14 @@ def main(out):
     print('hud',len(b))
     # fonts
     chars=[chr(c) for c in range(32,127)]+[chr(c) for c in range(0x410,0x450)]+['Ё','ё','№','—','«','»','•','×']
-    for name,path,size in [('f1','/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf',10),('f2','/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf',15)]:
+    import os
+    ttf = None
+    for c in ('/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf',
+              os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DejaVuSansCondensed-Bold.ttf')):
+        if os.path.exists(c): ttf = c; break
+    if ttf is None:   # the repository already has res/f1.fnt and res/f2.fnt (DejaVu, free licence)
+        print('fonts: DejaVu not found, keeping res/f1.fnt and res/f2.fnt'); return
+    for name,path,size in [('f1',ttf,10),('f2',ttf,15)]:
         f=ImageFont.truetype(path,size)
         asc,desc=f.getmetrics(); H=asc+desc
         fb=bytearray(b'FNT1')+struct.pack('>HH',H,len(chars))
@@ -60,5 +72,5 @@ def main(out):
     for n,a in recs[20:]:
         if x+a.shape[1]>300: break
         pv.paste(Image.fromarray(a),(x,30)); x+=a.shape[1]+2
-    pv.resize((900,180),Image.NEAREST).save('../shots/hud.png')
+    _preview(pv.resize((900,180),Image.NEAREST), os.path.join(out, '..', 'shots', 'hud.png'))
 main(sys.argv[1])

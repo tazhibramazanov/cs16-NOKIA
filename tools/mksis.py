@@ -2,6 +2,7 @@
 """Minimal Symbian OS 9 (S60 3rd edition) SIS/SISX builder + signer (Python 3).
 Field layout follows the Symbian SIS file format (as implemented by makesis / ensymble)."""
 import struct, zlib, hashlib, subprocess, time, sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 T = dict(SISString=1, SISArray=2, SISCompressed=3, SISVersion=4, SISVersionRange=5, SISDate=6, SISTime=7, SISDateTime=8,
          SISUid=9, SISLanguage=11, SISContents=12, SISController=13, SISInfo=14, SISSupportedLanguages=15,
@@ -92,8 +93,9 @@ def build(out, appuid, name, vendor, ver, files, key_pem, cert_pem, langs=(1,), 
     ib = field('SISInstallBlock', array('SISFileDescription', fdescs) + array('SISController', []) + array('SISIf', []))
     ctrl_body = info + opts + lng + prereq + props + ib
     # sign the controller contents (without header/padding), before signatures and data index
-    sig = subprocess.run(['openssl', 'dgst', '-sha1', '-sign', key_pem], input=ctrl_body, capture_output=True, check=True).stdout
-    der = subprocess.run(['openssl', 'x509', '-in', cert_pem, '-outform', 'DER'], capture_output=True, check=True).stdout
+    import rsa1   # pure Python, no openssl needed
+    sig = rsa1.sign(rsa1.load_key(key_pem), ctrl_body)
+    der = rsa1.cert_der(cert_pem)
     sigchain = field('SISSignatureCertificateChain',
                      array('SISSignature', [field('SISSignature', field('SISSignatureAlgorithm', sstring('1.2.840.113549.1.1.5')) + blob(sig))]) +
                      field('SISCertificateChain', blob(der)))
@@ -172,10 +174,8 @@ def verify(path, cert_pem):
     alg = fields(sg[0][1])[0][1].decode('utf-16-le')
     sigdata = sg[1][1]
     der = fields(sc[1][1])[0][1]
-    open('/tmp/_c.der', 'wb').write(der); open('/tmp/_s.bin', 'wb').write(sigdata); open('/tmp/_d.bin', 'wb').write(signed)
-    subprocess.run(['openssl', 'x509', '-inform', 'DER', '-in', '/tmp/_c.der', '-pubkey', '-noout', '-out', '/tmp/_p.pem'], check=True)
-    v = subprocess.run(['openssl', 'dgst', '-sha1', '-verify', '/tmp/_p.pem', '-signature', '/tmp/_s.bin', '/tmp/_d.bin'], capture_output=True, text=True)
-    assert 'Verified OK' in v.stdout, v.stdout + v.stderr
+    import rsa1
+    assert rsa1.verify(der, signed, sigdata), 'bad signature'
     # files
     ib = fields(cf[5][1])
     _, fdescs = readarray(ib[0][1])
