@@ -18,7 +18,7 @@ OUT_NAME = 'КС 1.6 НОКИЯ'
 RES = os.path.join(ROOT, 'res')
 WIN = os.name == 'nt'
 EXE = '.exe' if WIN else ''
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 MAPS = ['de_dust2', 'de_dust', 'de_train']
 
 MAVENS = ['https://repo1.maven.org/maven2/',                        # Maven Central and its mirrors, tried in order

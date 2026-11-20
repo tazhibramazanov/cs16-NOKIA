@@ -1,6 +1,6 @@
-// CS 1.6 E52 Edition 1.0 — single-file PC launcher.
+// CS 1.6 E52 Edition — single-file PC launcher.
 // The game jar and its Java runtime are packed (xz) at the end of this exe.
-// First start: unpacks them to %LOCALAPPDATA%\CS16E52\runtime_1.0_<id>\ (with a progress window),
+// First start: unpacks them to %LOCALAPPDATA%\CS16E52\runtime_<id>\ (with a progress window),
 // later starts: runs the game straight away.
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,7 +164,21 @@ int main(int argc, char **argv) {
 }
 #else
 // ---------------------------------------------------------------- Windows UI + launch
-static const wchar_t *TITLE = L"CS 1.6 E52 (PC) 1.0";
+static const wchar_t *TITLE = L"CS 1.6 E52 (PC)";   // no version: the stub does not change between game versions
+
+// language of the game (settings.bin byte 36 since settings v8; English until the player picks Russian)
+static int gRu;
+static void read_lang(void) {
+    wchar_t p[MAX_PATH];
+    if (!GetEnvironmentVariableW(L"APPDATA", p, MAX_PATH)) return;
+    wcscat(p, L"\\CS16E52\\settings.bin");
+    HANDLE f = CreateFileW(p, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    unsigned char b[40]; DWORD got = 0;
+    if (ReadFile(f, b, sizeof b, &got, NULL) && got > 36 && b[0] >= 8) gRu = b[36] == 1;
+    CloseHandle(f);
+}
+#define L2(en, ru) (gRu ? (ru) : (en))
 static HWND gWnd;
 static volatile LONG gState;   // 0 running, 1 ok, 2 error
 static FH gSelf; static Trailer gT;
@@ -191,14 +205,14 @@ static LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HFONT f = CreateFontW(-15, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Tahoma");
         HFONT of = SelectObject(dc, f);
         int pct = gTotal ? (int)(gDone * 100 / gTotal) : 0;
-        wchar_t s[128]; swprintf(s, 128, L"Первый запуск: распаковка игры... %d%%", pct);
+        wchar_t s[128]; swprintf(s, 128, L2(L"First start: unpacking the game... %d%%", L"Первый запуск: распаковка игры... %d%%"), pct);
         RECT tr = { 16, 14, rc.right - 16, 36 }; DrawTextW(dc, s, -1, &tr, DT_LEFT | DT_SINGLELINE);
         RECT b = { 16, 46, rc.right - 16, 66 };
         HBRUSH dk = CreateSolidBrush(RGB(0x28, 0x2E, 0x22)); FillRect(dc, &b, dk); DeleteObject(dk);
         RECT fb = b; fb.left += 2; fb.top += 2; fb.bottom -= 2; fb.right = fb.left + (b.right - b.left - 4) * pct / 100;
         HBRUSH or = CreateSolidBrush(RGB(0xC4, 0xB5, 0x50)); FillRect(dc, &fb, or); DeleteObject(or);
         SetTextColor(dc, RGB(0xA0, 0xAA, 0x95));
-        RECT nr = { 16, 74, rc.right - 16, 94 }; DrawTextW(dc, L"Это только один раз, дальше игра запускается сразу.", -1, &nr, DT_LEFT | DT_SINGLELINE);
+        RECT nr = { 16, 74, rc.right - 16, 94 }; DrawTextW(dc, L2(L"This happens only once, then the game starts right away.", L"Это только один раз, дальше игра запускается сразу."), -1, &nr, DT_LEFT | DT_SINGLELINE);
         SelectObject(dc, of); DeleteObject(f);
         EndPaint(h, &ps); return 0;
     }
@@ -223,10 +237,11 @@ static void remove_old(const wchar_t *base, const wchar_t *keep) {
 
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show) {
     (void)hp; (void)cmd; (void)show;
+    read_lang();
     wchar_t exe[MAX_PATH]; GetModuleFileNameW(NULL, exe, MAX_PATH);
     gSelf = self_open(exe);
     if (!fh_ok(gSelf) || read_trailer(gSelf, &gT)) {
-        MessageBoxW(NULL, L"Файл игры повреждён (нет встроенных данных).\nСкачайте CS16_E52_PC.exe заново.", TITLE, MB_ICONERROR);
+        MessageBoxW(NULL, L2(L"The game file is damaged (no built-in data).\nDownload CS16_E52_PC.exe again.", L"Файл игры повреждён (нет встроенных данных).\nСкачайте CS16_E52_PC.exe заново."), TITLE, MB_ICONERROR);
         return 1;
     }
     wchar_t base[MAX_PATH], leaf[64], marker[MAX_PATH], javaw[MAX_PATH], jar[MAX_PATH], cl[4096];
@@ -235,7 +250,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show) {
     }
     wcscat(base, L"\\CS16E52");
     CreateDirectoryW(base, NULL);
-    swprintf(leaf, 64, L"runtime_1.0_%08x", gT.id);
+    swprintf(leaf, 64, L"runtime_%08x", gT.id);
     swprintf(gDest, MAX_PATH, L"%ls\\%ls", base, leaf);
     swprintf(marker, MAX_PATH, L"%ls\\unpacked.ok", gDest);
     swprintf(javaw, MAX_PATH, L"%ls\\jre\\bin\\javaw.exe", gDest);
@@ -258,7 +273,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show) {
         WaitForSingleObject(th, INFINITE); CloseHandle(th);
         if (gState != 1) {
             wchar_t e[512], we[256]; MultiByteToWideChar(CP_UTF8, 0, gErr, -1, we, 256);
-            swprintf(e, 512, L"Не удалось распаковать игру:\n%ls\n\nПапка: %ls", we, gDest);
+            swprintf(e, 512, L2(L"Could not unpack the game:\n%ls\n\nFolder: %ls", L"Не удалось распаковать игру:\n%ls\n\nПапка: %ls"), we, gDest);
             MessageBoxW(NULL, e, TITLE, MB_ICONERROR);
             return 1;
         }
@@ -273,7 +288,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show) {
     ZeroMemory(&si, sizeof si); si.cb = sizeof si; ZeroMemory(&pi, sizeof pi);
     if (!CreateProcessW(javaw, cl, NULL, NULL, FALSE, 0, NULL, gDest, &si, &pi)) {
         DeleteFileW(marker);
-        MessageBoxW(NULL, L"Не удалось запустить игру. Запустите CS16_E52_PC.exe ещё раз.", TITLE, MB_ICONERROR);
+        MessageBoxW(NULL, L2(L"Could not start the game. Run CS16_E52_PC.exe again.", L"Не удалось запустить игру. Запустите CS16_E52_PC.exe ещё раз."), TITLE, MB_ICONERROR);
         return 1;
     }
     CloseHandle(pi.hThread); CloseHandle(pi.hProcess);

@@ -5,7 +5,7 @@ import java.util.Random;
 
 public final class Game {
     public static Game g;
-    public static final String VERSION = "1.0";
+    public static final String VERSION = "1.1";
     // actions
     public static final int A_FWD = 1, A_BACK = 2, A_TURNL = 4, A_TURNR = 8, A_STRL = 16, A_STRR = 32, A_LOOKU = 64, A_LOOKD = 128,
             A_FIRE = 256, A_JUMP = 512, A_DUCK = 1024, A_RELOAD = 2048, A_USE = 4096, A_NEXTW = 8192, A_ALT = 16384, A_BUY = 32768,
@@ -89,7 +89,7 @@ public final class Game {
     public MP mp; public int mode;   // 0 original (bomb), 1 deathmatch, 2 zombie
     public String mpServer = "", mpName = "", mpErr;
     int mpMode, mpMap;
-    static final int M_MP = 16, M_SEARCH = 17, M_LAN = 18;
+    static final int M_MP = 16, M_SEARCH = 17, M_LAN = 18, M_LANG = 19;
     LanFinder lanFinder; LanFinder.Game[] lanList = new LanFinder.Game[0];
     float infectAt; boolean infected;
     // zombie types (the host picks one at random for every new zombie)
@@ -340,7 +340,7 @@ public final class Game {
     // ======================================================================= settings
     void loadSettings() {
         byte[] b = Sys.s.load();
-        if (b == null || b.length < 30 || b[0] < 2 || b[0] > 7) return;
+        if (b == null || b.length < 30 || b[0] < 2 || b[0] > 8) return;
         int k = 1;
         sens = b[k++]; sensV = b[k++]; invert = b[k++] != 0; layout = b[k++]; difficulty = b[k++]; volume = b[k++]; quality = b[k++];
         soundOn = b[k++] != 0; showFps = b[k++] != 0; maxRounds = b[k++]; autoAim = b[k++] != 0; gammaIdx = b[k++]; crossCol = b[k++]; crossSize = b[k++];
@@ -352,6 +352,7 @@ public final class Game {
         if (b[0] >= 5) { orient = b[k++]; if (orient < 0 || orient > 1) orient = pc ? 1 : 0; }
         if (pc && b[0] < 6) orient = 1;   // older PC saves had no screen choice: horizontal
         if (b[0] >= 7) { voiceOn = b[k++] != 0; voiceVol = b[k++]; if (voiceVol < 10 || voiceVol > 100) voiceVol = 100; }
+        Lang.set(b[0] >= 8 ? b[k++] : Lang.EN);   // 1.1: English until the player picks Russian
         if (sens < 1 || sens > 10) sens = 5; if (sensV < 1 || sensV > 10) sensV = 5; if (difficulty < 0 || difficulty > 3) difficulty = 1;
         if (quality < 0 || quality > 3) quality = 0; if (maxRounds < 3 || maxRounds > 30) maxRounds = 15; if (gammaIdx < 0 || gammaIdx > 4) gammaIdx = 1;
         if (crossCol < 0 || crossCol > 4) crossCol = 0; if (crossSize < 0 || crossSize > 2) crossSize = 1; if (winScale < 1 || winScale > 4) winScale = 3;
@@ -370,11 +371,11 @@ public final class Game {
     }
 
     public void saveSettings() {
-        byte[] b = new byte[]{7, (byte) sens, (byte) sensV, (byte) (invert ? 1 : 0), (byte) layout, (byte) difficulty, (byte) volume, (byte) quality,
+        byte[] b = new byte[]{8, (byte) sens, (byte) sensV, (byte) (invert ? 1 : 0), (byte) layout, (byte) difficulty, (byte) volume, (byte) quality,
                 (byte) (soundOn ? 1 : 0), (byte) (showFps ? 1 : 0), (byte) maxRounds, (byte) (autoAim ? 1 : 0), (byte) gammaIdx, (byte) crossCol, (byte) crossSize,
                 (byte) (crossDyn ? 1 : 0), (byte) (viewBobOn ? 1 : 0), (byte) (radarOn ? 1 : 0), (byte) (firstRunDone ? 1 : 0), (byte) winScale,
                 (byte) cMap, (byte) cTeam, (byte) cBots, (byte) (cRoundTime / 15), (byte) (cBuyTime / 5), (byte) cFreeze,
-                (byte) ((cMoney / 100) >> 8), (byte) (cMoney / 100), (byte) (cFF ? 1 : 0), (byte) (fpsCap20 ? 1 : 0), (byte) (pcMouse ? 1 : 0), (byte) gfx, (byte) nfr, (byte) orient, (byte) (voiceOn ? 1 : 0), (byte) voiceVol};
+                (byte) ((cMoney / 100) >> 8), (byte) (cMoney / 100), (byte) (cFF ? 1 : 0), (byte) (fpsCap20 ? 1 : 0), (byte) (pcMouse ? 1 : 0), (byte) gfx, (byte) nfr, (byte) orient, (byte) (voiceOn ? 1 : 0), (byte) voiceVol, (byte) Lang.lang};
         Net.Buf sb = new Net.Buf().str(mpServer).str(mpName);
         byte[] all = new byte[b.length + 1 + Binds.N * 16 + sb.n];
         System.arraycopy(b, 0, all, 0, b.length);
@@ -731,6 +732,7 @@ public final class Game {
                     pc ? "Схема: " + (pcMouse ? "клавиатура + мышь" : "как на телефоне, " + layoutName()) : "Раскладка: " + layoutName(),
                     "Чувствительность: " + sens, "Вверх/вниз: " + sensV, (pc && pcMouse ? "Инверсия мыши: " : "Инверсия взгляда: ") + onoff(invert),
                     "Помощь прицеливания: " + onoff(autoAim), "OK"};
+            case M_LANG: return new String[]{(Lang.lang == Lang.EN ? "> " : "   ") + "English", (Lang.lang == Lang.RU ? "> " : "   ") + "Русский", "OK"};
             case M_SND: return new String[]{"Звук: " + onoff(soundOn), "Громкость: " + volume + "%", "Голосовой чат: " + onoff(voiceOn), "Громкость голоса: " + voiceVol + "%", micTestLabel(), "OK"};
             case M_FIRST1: return pc ? new String[]{"Клавиатура + мышь (как в CS)", "Как на телефоне (цифры и стрелки)"}
                     : new String[]{"Классика: 2468 ходьба", "Альтернатива: джойстик ходьба"};
@@ -757,7 +759,7 @@ public final class Game {
             case M_SEARCH: return "Поиск игры";
             case M_LAN: return "Игры по LAN (Wi-Fi)";
             case M_TEAM: return "Выберите команду";
-            case M_GFX: case M_CTRL: case M_BINDS: case M_SND: return "Настройки";
+            case M_GFX: case M_CTRL: case M_BINDS: case M_SND: case M_LANG: return "Настройки";
             case M_FIRST1: return "Первый запуск — управление";
             case M_FIRST2: return "Первый запуск — разрешение";
             case M_GAMEMENU: return "Меню";
@@ -865,7 +867,7 @@ public final class Game {
             switch (menu) {
                 case M_PAUSE: menu = M_NONE; break;
                 case M_TEAM: menu = state == ST_PLAY ? M_PAUSE : M_MAIN; menuSel = state == ST_PLAY ? 1 : 0; break;
-                case M_GFX: case M_CTRL: case M_SND: case M_BINDS: closeOptions(); break;
+                case M_GFX: case M_CTRL: case M_SND: case M_BINDS: case M_LANG: closeOptions(); break;
                 case M_FIRST1: case M_FIRST2: break;
                 case M_GAMEMENU: menu = M_NONE; break;
                 case M_RADIO1: case M_RADIO2: case M_RADIO3: menu = M_NONE; break;
@@ -923,6 +925,10 @@ public final class Game {
             case M_TEAM:
                 if (menuSel == 3) { menu = M_PAUSE; menuSel = 1; break; }
                 switchTeam(menuSel == 2 ? 1 + (rnd.nextInt() & 1) : menuSel + 1); menu = M_NONE; break;
+            case M_LANG:
+                if (menuSel < 2) { Lang.set(menuSel == 0 ? Lang.EN : Lang.RU); saveSettings(); uiClick(); }
+                else closeOptions();
+                break;
             case M_GFX: case M_CTRL: case M_SND:
                 if (menu == M_SND && menuSel == 4) { micTest(); break; }
                 if (menuSel == it.length - 1) closeOptions();
@@ -960,12 +966,12 @@ public final class Game {
     }
 
     // ---- options dialog helpers
-    static final int[] OPT_TABS = {6, 7, 15, 8};   // M_GFX, M_CTRL, M_BINDS, M_SND
-    static final String[] OPT_TAB_NAMES = {"Видео", "Управление", "Клавиши", "Звук"};
-    static final String[] OPT_TAB_SHORT = {"Видео", "Управл.", "Клавиши", "Звук"};
+    static final int[] OPT_TABS = {6, 7, 15, 8, 19};   // M_GFX, M_CTRL, M_BINDS, M_SND, M_LANG
+    static final String[] OPT_TAB_NAMES = {"Видео", "Управление", "Клавиши", "Звук", "Язык"};
+    static final String[] OPT_TAB_SHORT = {"Видео", "Упр.", "Клав.", "Звук", "Язык"};
     public boolean tabFocus; int optReturnSel;
-    int optTab() { for (int i = 0; i < 4; i++) if (OPT_TABS[i] == menu) return i; return -1; }
-    void switchTab(int t) { t = (t + 4) % 4; menu = OPT_TABS[t]; menuSel = 0; uiRoll(); }
+    int optTab() { for (int i = 0; i < OPT_TABS.length; i++) if (OPT_TABS[i] == menu) return i; return -1; }
+    void switchTab(int t) { int n = OPT_TABS.length; t = (t + n) % n; menu = OPT_TABS[t]; menuSel = Lang.lang == Lang.RU && menu == M_LANG ? 1 : 0; uiRoll(); }
     void openOptions(int ret) { optReturn = ret; optReturnSel = menuSel; menu = M_GFX; menuSel = 0; tabFocus = false; }
     void closeOptions() { saveSettings(); menu = optReturn; menuSel = optReturnSel; tabFocus = false; bindCapture = -1; }
     void uiRoll() { if (soundOn) Sys.s.sound("ui_buttonrollover", volume * 6 / 10); }
@@ -999,7 +1005,7 @@ public final class Game {
         saveSettings();
         return true;
     }
-    boolean isOptMenu() { return menu == M_CREATE || menu == M_GFX || menu == M_CTRL || menu == M_SND || menu == M_BINDS; }
+    boolean isOptMenu() { return menu == M_CREATE || menu == M_GFX || menu == M_CTRL || menu == M_SND || menu == M_BINDS || menu == M_LANG; }
 
     // ======================================================================= loading
     void startMatch(int mapI, int team) {
@@ -2831,21 +2837,28 @@ public final class Game {
         gx.frame(x, y, w, h, menuTitle());
         int px = x + 6, py = y + 17, pw = w - 12, ph = h - 17 - (nb > 0 ? (port ? 36 : 24) : 6);
         if (tab >= 0) {
-            int tx = px;
-            for (int i = 0; i < 4; i++) {
-                int tw = gx.textW(gx.f1, tabN[i]) + 14;
+            // five tabs: narrow the padding if they do not fit, then slide the row so the active tab is always whole
+            int nt = OPT_TABS.length, pad = 14, sum = 0;
+            for (int i = 0; i < nt; i++) sum += gx.textW(gx.f1, tabN[i]) + pad + 1;
+            if (sum > pw) { pad = 7; sum = 0; for (int i = 0; i < nt; i++) sum += gx.textW(gx.f1, tabN[i]) + pad + 1; }
+            int upTo = 0; for (int i = 0; i <= tab; i++) upTo += gx.textW(gx.f1, tabN[i]) + pad + 1;
+            int shift = sum > pw ? Math.max(0, Math.min(sum - pw, upTo - pw + 8)) : 0;
+            int tx = px - shift;
+            for (int i = 0; i < nt; i++) {
+                int tw = gx.textW(gx.f1, tabN[i]) + pad;
+                if (tx < px - 1 || tx + tw > px + pw + 1) { tx += tw + 1; continue; }   // only whole tabs
                 boolean act = i == tab;
                 gx.fill(tx, py + (act ? 0 : 2), tw, act ? 15 : 13, act ? Gfx.FRAME : Gfx.FIELD, 256);
                 gx.fill(tx, py + (act ? 0 : 2), tw, 1, Gfx.BRIGHT, 256); gx.fill(tx, py + (act ? 0 : 2), 1, act ? 15 : 13, Gfx.BRIGHT, 256);
                 gx.fill(tx + tw - 1, py + (act ? 0 : 2), 1, act ? 15 : 13, Gfx.DARK, 256);
-                gx.text(gx.f1, tabN[i], tx + 7, py + (act ? 2 : 3), act ? (tabFocus ? 0xFFFFFF : Gfx.CHECK) : Gfx.OFFWHITE);
+                gx.text(gx.f1, tabN[i], tx + pad / 2, py + (act ? 2 : 3), act ? (tabFocus ? 0xFFFFFF : Gfx.CHECK) : Gfx.OFFWHITE);
                 if (act && tabFocus) { gx.rect(tx + 2, py + 2, tw - 4, 12, 0); }
                 tx += tw + 1;
             }
             py += 14; ph -= 14;
             gx.fill(px, py, pw, 1, Gfx.BRIGHT, 256);           // panel top edge, broken under the active tab
-            int ax = px; for (int i = 0; i < tab; i++) ax += gx.textW(gx.f1, tabN[i]) + 15;
-            gx.fill(ax + 1, py, gx.textW(gx.f1, tabN[tab]) + 12, 1, Gfx.FRAME, 256);
+            int ax = px - shift; for (int i = 0; i < tab; i++) ax += gx.textW(gx.f1, tabN[i]) + pad + 1;
+            gx.fill(ax + 1, py, gx.textW(gx.f1, tabN[tab]) + pad - 2, 1, Gfx.FRAME, 256);
             gx.fill(px, py, 1, ph, Gfx.BRIGHT, 256); gx.fill(px + pw - 1, py, 1, ph, Gfx.DARK, 256); gx.fill(px, py + ph - 1, pw, 1, Gfx.DARK, 256);
         } else if (list) {
             gx.fill(px, py + 2, pw, ph - 2, Gfx.FIELD, 256); gx.bevel(px, py + 2, pw, ph - 2, false);
@@ -3123,7 +3136,7 @@ public final class Game {
         for (int t = 1; t <= 2; t++) {
             int tc = t == 1 ? 0xFF5050 : 0x99CCFF;
             int cnt = 0, alive = 0; for (int i = 0; i < pl.length; i++) if (pl[i].team == t) { cnt++; if (pl[i].alive) alive++; }
-            gx.text(gx.f1, TNAMES[t - 1] + "   " + alive + "/" + cnt, x + 6, ry, tc);
+            gx.text(gx.f1, (t == 2 && port() && Lang.lang == Lang.EN ? "CT" : TNAMES[t - 1]) + "   " + alive + "/" + cnt, x + 6, ry, tc);   // "Counter-Terrorists" does not fit the narrow table
             gx.text(gx.f1, "" + (t == 1 ? scoreT : scoreCT), cS + 6, ry, tc);
             gx.fill(x + 6, ry + 12, w - 12, 1, tc, 160);
             ry += 15;
@@ -3243,6 +3256,7 @@ public final class Game {
 
     /** word-wrap s into lines no wider than maxW (continuation lines indented) */
     void wrap(String s, int maxW, java.util.Vector out) {
+        s = Lang.t(s);
         String pre = "";
         while (s.length() > 0) {
             if (gx.textW(gx.f1, pre + s) <= maxW) { out.addElement(pre + s); return; }

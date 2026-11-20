@@ -43,7 +43,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
         game = new Game(GW, GH, screen);
         game.pc = true;
         game.orient = 1;   // first start: horizontal (saved setting wins)
-        frame = new Frame("Counter-Strike 1.6 — Nokia E52 Edition (PC тест)");
+        frame = new Frame(Lang.t("Counter-Strike 1.6 — Nokia E52 Edition (PC тест)"));
         canvas = new Canvas();
         canvas.setBackground(Color.black);
         frame.add(canvas);
@@ -55,6 +55,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
         blank = Toolkit.getDefaultToolkit().createCustomCursor(new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB), new Point(0, 0), "blank");
         try { frame.setIconImage(javax.imageio.ImageIO.read(open("/icon.png"))); } catch (Exception e) { }
         game.init();
+        frame.setTitle(Lang.t("Counter-Strike 1.6 — Nokia E52 Edition (PC тест)"));   // the saved language is known now
         if (game.orient != curOrient) setOrient(game.orient);
         applyScale();
         frame.setVisible(true);
@@ -143,7 +144,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
         } else g.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh, null);
         if (!captured && game.state == 2 && game.menu == -1 && game.pcMouse) {
             g.setColor(new Color(0, 0, 0, 160)); g.fillRect(0, h - 22, w, 22);
-            g.setColor(Color.white); g.drawString("Щёлкните мышью в окне, чтобы управлять обзором (Esc — пауза)", 8, h - 7);
+            g.setColor(Color.white); g.drawString(Lang.t("Щёлкните мышью в окне, чтобы управлять обзором (Esc — пауза)"), 8, h - 7);
         }
         g.dispose();
         bs.show();
@@ -628,7 +629,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
 
     public void editText(final String title, final String init, final int maxLen, final TextCb cb) {
         SwingUtilities.invokeLater(new Runnable() { public void run() {
-            Object r = JOptionPane.showInputDialog(frame, title, "CS 1.6 E52", JOptionPane.PLAIN_MESSAGE, null, null, init);
+            Object r = JOptionPane.showInputDialog(frame, Lang.t(title), "CS 1.6 E52", JOptionPane.PLAIN_MESSAGE, null, null, init);
             String t = r == null ? null : r.toString();
             if (t != null && t.length() > maxLen) t = t.substring(0, maxLen);
             final String res = t;

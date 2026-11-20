@@ -107,12 +107,14 @@ public final class Gfx {
     }
 
     public int textW(Font f, String s) {
+        s = Lang.t(s);
         int w = 0;
         for (int i = 0; i < s.length(); i++) { int k = f.find(s.charAt(i)); w += k < 0 ? f.h / 3 : f.w[k]; }
         return w;
     }
 
     public void text(Font f, String s, int x, int y, int col) {
+        s = Lang.t(s);
         int cr = (col >> 16) & 255, cg = (col >> 8) & 255, cb = col & 255;
         for (int i = 0; i < s.length(); i++) {
             int k = f.find(s.charAt(i));

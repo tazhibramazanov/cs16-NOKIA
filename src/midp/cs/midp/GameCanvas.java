@@ -160,7 +160,7 @@ public final class GameCanvas extends Canvas implements Runnable {
         if (error != null) {
             g.setColor(0xFF4040);
             g.setFont(Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL));
-            g.drawString(error, 2, h - 2, Graphics.LEFT | Graphics.BOTTOM);
+            g.drawString(cs.Lang.t(error), 2, h - 2, Graphics.LEFT | Graphics.BOTTOM);
         }
     }
 

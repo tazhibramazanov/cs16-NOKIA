@@ -86,8 +86,8 @@ public final class MidpSys extends Sys implements Runnable {
     public void editText(String title, String init, int maxLen, final TextCb cb) {
         final Display d = Display.getDisplay(mid);
         final Displayable back = d.getCurrent();
-        final TextBox tb = new TextBox(title, init != null && init.length() <= maxLen ? init : "", maxLen, TextField.ANY);
-        final Command ok = new Command("OK", Command.OK, 1), cancel = new Command("Отмена", Command.BACK, 2);
+        final TextBox tb = new TextBox(cs.Lang.t(title), init != null && init.length() <= maxLen ? init : "", maxLen, TextField.ANY);
+        final Command ok = new Command("OK", Command.OK, 1), cancel = new Command(cs.Lang.t("Отмена"), Command.BACK, 2);
         tb.addCommand(ok); tb.addCommand(cancel);
         tb.setCommandListener(new CommandListener() { public void commandAction(Command c, Displayable s) {
             d.setCurrent(back);
