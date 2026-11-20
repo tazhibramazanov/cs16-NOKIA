@@ -31,4 +31,12 @@ if __name__=='__main__':
         if not os.path.exists(os.path.join(out, nm)) and os.path.exists(f):
             try: tot += conv(f, os.path.join(out, nm))
             except Exception as e: print('ERR', rel, e)
+    # menu clicks live in cstrike/resource/UI (not in sound/)
+    for src, nm in (('buttonclick.wav', 'ui_buttonclick.wav'), ('buttonrollover.wav', 'ui_buttonrollover.wav')):
+        for d in ('/cstrike/resource/UI/', '/cstrike/resource/ui/', '/valve/resource/UI/', '/valve/resource/ui/'):
+            f = GAME + d + src
+            if os.path.exists(f):
+                try: tot += conv(f, os.path.join(out, nm))
+                except Exception as e: print('ERR', src, e)
+                break
     print('total bytes',tot, len(glob.glob(out+'/*.wav')),'files')

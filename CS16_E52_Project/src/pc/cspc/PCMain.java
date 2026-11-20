@@ -384,15 +384,34 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
         return b;
     }
 
+    final java.util.HashSet clipErrLogged = new java.util.HashSet();
+    Mixer decoder;   // only used to read .wav files for the fallback Clips
+
+    /** fallback when the mixer has no device: Windows often keeps short 8-bit 11 kHz Clips silent,
+     *  so each sound becomes 16-bit 44.1 kHz stereo with a little silence after it */
     Clip newClip(String name) {
         try {
-            byte[] b = wav(name);
-            if (b.length == 0) return null;
-            AudioInputStream ais = AudioSystem.getAudioInputStream(new ByteArrayInputStream(b));
+            if (decoder == null) { final PCMain self = this; decoder = new Mixer(new Mixer.Loader() { public InputStream open(String n) { return self.open(n); } }, new File(cfgDir, "sound_log.txt")); }
+            short[] d = decoder.load(name);
+            if (d == null || d.length == 0) return null;
+            int rate = ((Integer) decoder.rates.get(name)).intValue();
+            int n = (int) ((long) d.length * 44100 / rate), pad = 44100 / 10;
+            byte[] out = new byte[(n + pad) * 4];
+            for (int i = 0; i < n; i++) {
+                long p = (long) i * rate * 65536 / 44100;
+                int idx = (int) (p >>> 16), f = (int) (p & 0xFFFF);
+                int a = d[Math.min(idx, d.length - 1)], b = d[Math.min(idx + 1, d.length - 1)];
+                int v = a + (((b - a) * f) >> 16);
+                out[i * 4] = out[i * 4 + 2] = (byte) v; out[i * 4 + 1] = out[i * 4 + 3] = (byte) (v >> 8);
+            }
             Clip c = AudioSystem.getClip();
-            c.open(ais);
+            c.open(new AudioFormat(44100, 16, 2, true, false), out, 0, out.length);
             return c;
-        } catch (Exception e) { return null; }
+        } catch (Throwable e) { if (clipErrLogged.add(name)) logSound("clip " + name + ": " + e); return null; }
+    }
+
+    void logSound(String s) {
+        try { FileWriter w = new FileWriter(new File(cfgDir, "sound_log.txt"), true); w.write(new java.util.Date() + "  " + s + "\r\n"); w.close(); } catch (Exception e) { }
     }
 
     void preloadAll() {
@@ -414,7 +433,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     final Vector queue = new Vector();
     Thread soundThread;
 
-    Mixer mixer; boolean mixerTried;
+    Mixer mixer; long mixerTriedAt = -1; boolean mixerLogged;
 
     public void preloadSounds(String[] names) {
         Mixer m = mixer();
@@ -422,11 +441,13 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     }
 
     Mixer mixer() {
-        if (!mixerTried) {
-            mixerTried = true;
+        long now = System.currentTimeMillis();
+        if (mixer == null && (mixerTriedAt < 0 || now - mixerTriedAt > 3000)) {   // device busy or not ready yet: try again every 3 s
+            mixerTriedAt = now;
             final PCMain self = this;
-            Mixer m = new Mixer(new Mixer.Loader() { public InputStream open(String n) { return self.open(n); } }, new File(cfgDir, "sound_log.txt"));
-            if (m.start()) mixer = m;
+            Mixer m = new Mixer(new Mixer.Loader() { public InputStream open(String n) { return self.open(n); } }, mixerLogged ? null : new File(cfgDir, "sound_log.txt"));   // details only on the first try
+            if (m.start()) { mixer = m; logSound("mixer started"); }
+            else if (!mixerLogged) { mixerLogged = true; logSound("mixer failed (" + m.error + "), using clips for now"); }
         }
         return mixer;
     }
@@ -434,6 +455,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     public void sound(String name, int vol) {
         if (vol <= 0) return;
         Mixer mx = mixer();
+        if (mx != null && !mx.alive) { logSound("mixer stopped, reopening"); mixer = null; mixerTriedAt = -1; mx = mixer(); }   // e.g. headphones unplugged
         if (mx != null) { mx.play(name, Math.min(100, vol)); return; }
         synchronized (queue) { if (queue.size() < 32) { queue.addElement(new Object[]{name, new Integer(vol)}); queue.notify(); } }
         if (soundThread == null) {

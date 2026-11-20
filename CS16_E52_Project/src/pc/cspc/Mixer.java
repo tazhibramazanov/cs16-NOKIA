@@ -150,7 +150,7 @@ final class Mixer implements Runnable {
         byte[] out = new byte[BLOCK * fmt.getChannels() * (fmt.getSampleSizeInBits() / 8)];
         while (alive) {
             int o = mixBlock(out);
-            try { line.write(out, 0, o); } catch (Throwable e) { log("write: " + e); alive = false; }
+            try { line.write(out, 0, o); } catch (Throwable e) { log("write: " + e); alive = false; try { line.close(); } catch (Throwable e2) { } }
         }
     }
 }

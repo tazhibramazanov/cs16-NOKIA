@@ -21,7 +21,9 @@ EXE = '.exe' if WIN else ''
 VERSION = '1.0.0'
 MAPS = ['de_dust2', 'de_dust', 'de_train']
 
-MAVEN = 'https://repo1.maven.org/maven2/'
+MAVENS = ['https://repo1.maven.org/maven2/',                        # Maven Central and its mirrors, tried in order
+          'https://maven-central.storage-download.googleapis.com/maven2/',
+          'https://repo.maven.apache.org/maven2/']
 JARS = {
     'ecj-4.6.1.jar': 'org/eclipse/jdt/core/compiler/ecj/4.6.1/ecj-4.6.1.jar',
     'cldcapi11-2.0.4.jar': 'org/microemu/cldcapi11/2.0.4/cldcapi11-2.0.4.jar',
@@ -73,7 +75,7 @@ def download(url, dst, label, must=True):
             return True
         except Exception as e:
             say('\n  не получилось скачать (%s)%s' % (e, ', ещё попытка...' if attempt < 2 else ''))
-            time.sleep(2)
+            if attempt < 2: time.sleep(10 if '429' in str(e) else 2)   # 429 = "too many requests": wait longer
     try: os.remove(tmp)
     except OSError: pass
     if not must: return False
@@ -151,7 +153,12 @@ def build_tools():
     step(3, 'Компилятор для телефона и ProGuard')
     for name, path in JARS.items():
         dst = os.path.join(LIB, name)
-        if not os.path.exists(dst): download(MAVEN + path, dst, name)
+        if os.path.exists(dst): continue
+        for i, m in enumerate(MAVENS):
+            if download(m + path, dst, name, must=False): break
+            if i + 1 < len(MAVENS): say('  пробую другое зеркало...')
+        else:
+            fail('не удалось скачать ' + name + '\nПроверьте интернет и запустите сборку ещё раз (через пару минут).')
     say('  всё на месте')
 
 
@@ -294,7 +301,7 @@ def convert(game):
     env = dict(os.environ, CS16_GAME=game, PYTHONIOENCODING='utf-8')
     snd_job = ('звуки', ['conv/conv_snd.py', 'res/snd'])
     if os.path.exists(mark) and open(mark, encoding='utf-8').read() == game:
-        if sound_count() < 20:   # older builds lost the in-game sounds on Windows: redo just them
+        if sound_count() < 20 or not os.path.exists(os.path.join(RES, 'snd', 'ui_buttonclick.wav')):   # older builds lost sounds: redo just them
             say('  звуков игры не хватает — перевожу звуки заново...')
             run([sys.executable] + snd_job[1], env=env, quiet=True)
             check_sounds()
@@ -345,6 +352,9 @@ def resources():
     return out
 
 
+PG_JARS = ('proguard-base-7.4.2.jar', 'proguard-core-9.1.1.jar', 'log4j-api-2.19.0.jar', 'log4j-core-2.19.0.jar', 'kotlin-stdlib-1.9.0.jar')
+
+
 def build_phone(jdk):
     java = tool(jdk, 'java')
     cp = os.pathsep.join(os.path.join(LIB, j) for j in ('cldcapi11-2.0.4.jar', 'midpapi20-2.0.4.jar'))
@@ -355,17 +365,20 @@ def build_phone(jdk):
          '-bootclasspath', cp, '-d', mcls] + src, quiet=True)
     inj, outj = os.path.join(BUILD, 'in.jar'), os.path.join(BUILD, 'out.jar')
     with zipfile.ZipFile(inj, 'w') as zf: zipdir(zf, mcls)
-    q = lambda p: "'" + p.replace('\\', '/') + "'"
-    pro = os.path.join(BUILD, 'pg.pro')
-    open(pro, 'w', encoding='utf-8').write('\n'.join([
-        '-injars ' + q(inj), '-outjars ' + q(outj),
-        '-libraryjars ' + os.pathsep.join(q(os.path.join(LIB, j)) for j in ('cldcapi11-2.0.4.jar', 'midpapi20-2.0.4.jar')),
+    # ProGuard misreads folders with spaces, brackets or Russian letters ("Новая папка (2)"):
+    # it runs inside the build folder and sees only short relative names
+    pgd = os.path.join(BUILD, 'pg'); shutil.rmtree(pgd, ignore_errors=True); os.makedirs(pgd)
+    for j in PG_JARS + ('cldcapi11-2.0.4.jar', 'midpapi20-2.0.4.jar'):
+        shutil.copy(os.path.join(LIB, j), os.path.join(pgd, j))
+    open(os.path.join(BUILD, 'pg.pro'), 'w', encoding='ascii').write('\n'.join([
+        '-injars in.jar', '-outjars out.jar',
+        '-libraryjars pg/cldcapi11-2.0.4.jar' + os.pathsep + 'pg/midpapi20-2.0.4.jar',
         '-microedition', '-target 1.3', '-dontoptimize', '-overloadaggressively', "-repackageclasses ''",
         '-allowaccessmodification', '-keep public class cs.midp.CSMidlet', '']))
     say('  ProGuard (сжатие кода)...')
-    pcp = os.pathsep.join(os.path.join(LIB, j) for j in ('proguard-base-7.4.2.jar', 'proguard-core-9.1.1.jar', 'log4j-api-2.19.0.jar', 'log4j-core-2.19.0.jar', 'kotlin-stdlib-1.9.0.jar'))
     if os.path.exists(outj): os.remove(outj)
-    run([java, '-cp', pcp, 'proguard.ProGuard', '@' + pro], quiet=True)
+    run([java, '-cp', os.pathsep.join('pg/' + j for j in PG_JARS), 'proguard.ProGuard', '@pg.pro'], cwd=BUILD, quiet=True)
+    shutil.rmtree(pgd, ignore_errors=True)
     man = ('Manifest-Version: 1.0\nMIDlet-1: CS 1.6,/icon.png,cs.midp.CSMidlet\nMIDlet-Name: CS16E52\nMIDlet-Vendor: E52 Edition\n'
            'MIDlet-Version: %s\nMIDlet-Icon: /icon.png\nMicroEdition-Configuration: CLDC-1.1\nMicroEdition-Profile: MIDP-2.0\n'
            'Nokia-MIDlet-Category: Game\n' % VERSION)
@@ -408,6 +421,31 @@ def build_pc(jdk):
         for f in resources(): zf.write(f, os.path.basename(f))
 
 
+# sounds the game must have: menu clicks, shots, steps, hits, radio
+KEY_SOUNDS = ('ui_buttonclick', 'ui_buttonrollover', 'weapons_ak47_1', 'weapons_m4a1_unsil_1', 'weapons_glock18_2', 'weapons_usp_unsil_1',
+              'weapons_deagle_1', 'weapons_awp1', 'weapons_knife_slash1', 'weapons_clipin1', 'weapons_c4_plant', 'player_pl_step1',
+              'player_bhit_flesh_1', 'player_die1', 'radio_go', 'radio_terwin', 'radio_ctwin')
+
+
+def check_jar_sounds(jar):
+    """open the finished game and make sure the key sounds are inside and are not silence"""
+    import wave, io
+    bad = []
+    with zipfile.ZipFile(jar) as zf:
+        names = set(zf.namelist())
+        for s in KEY_SOUNDS:
+            n = s + '.wav'
+            if n not in names: bad.append(s + ' (нет файла)'); continue
+            try:
+                w = wave.open(io.BytesIO(zf.read(n))); fr = w.readframes(w.getnframes()); sw = w.getsampwidth(); w.close()
+                vals = fr if sw == 1 else fr[1::2]
+                if not vals or max(vals) - min(vals) < 8: bad.append(s + ' (тишина)')
+            except Exception as e:
+                bad.append(s + ' (битый: %s)' % e)
+    if bad: fail('в %s испорчены звуки: %s' % (os.path.basename(jar), ', '.join(bad)))
+    say('  звуки в %s проверены: %d из %d в порядке' % (os.path.basename(jar), len(KEY_SOUNDS), len(KEY_SOUNDS)))
+
+
 def build_exe(jdk):
     if not WIN:
         say('  .exe собирается только на Windows — пропускаю (CS16_PC.jar запускается командой java -jar)'); return False
@@ -437,8 +475,10 @@ def main():
     step(6, 'Сборка')
     os.makedirs(BUILD, exist_ok=True)
     build_phone(jdk)
+    check_jar_sounds(os.path.join(BUILD, 'CS16_E52.jar'))
     build_sis()
     build_pc(jdk)
+    check_jar_sounds(os.path.join(BUILD, 'CS16_PC.jar'))
     exe = build_exe(jdk)
     step(7, 'Готово')
     OUT = os.path.join(desktop(), OUT_NAME)
