@@ -188,6 +188,15 @@ public final class MP {
             case 'L': g.startReload(p); break;
             case 'D': g.dropCurrent(p); break;
             case 'r': g.radio(p, r.u8()); break;
+            case 'V': {   // a part of a voice clip: pass it on to everyone with the speaker's slot, and play it here
+                int seq = r.u8(), part = r.u8(), parts = r.u8(), n = r.u16();
+                if (roomPlayers > 1) {
+                    Net.Buf v = new Net.Buf(); v.u8('V').u8(p.id).u8(seq).u8(part).u8(parts).u16(n).raw(r.b, r.p, Math.min((n + 1) / 2, r.b.length - r.p));
+                    toAll(v);
+                }
+                g.voiceIn(p.id, seq, part, parts, n, r.b, r.p);
+                break;
+            }
         }
     }
 
@@ -278,6 +287,7 @@ public final class MP {
                 }
                 case 'R': { int p = r.u8(), cmd = r.u8(); if (p < g.pl.length) { g.pl[p].lastRadio = -10; g.radio(g.pl[p], cmd); } break; }
                 case 'T': { String s = r.str(); g.chat(s, r.i32()); break; }
+                case 'V': { int pid = r.u8(), seq = r.u8(), part = r.u8(), parts = r.u8(), n = r.u16(); g.voiceIn(pid, seq, part, parts, n, r.b, r.p); break; }
             }
         } finally { applying = false; }
     }
@@ -373,6 +383,23 @@ public final class MP {
             float sp = p.speedFactor();
             if (sp > 20) p.animTime += dt * sp / 220f; else p.animTime = 0;
             p.onGround = true;
+        }
+    }
+
+    /** send a recorded clip in parts of Voice.PART samples (3 KB each) */
+    int voiceSeq;
+    public void sendVoice(short[] pcm) {
+        if (phase != 2 || g.me == null) return;
+        int n = Math.min(pcm.length, Voice.MAX_SEC * Voice.RATE);
+        if (n < Voice.RATE / 5) return;
+        Voice.normalize(pcm, n);
+        int parts = (n + Voice.PART - 1) / Voice.PART, seq = ++voiceSeq & 255;
+        for (int i = 0; i < parts; i++) {
+            int off = i * Voice.PART, cnt = Math.min(Voice.PART, n - off);
+            byte[] enc = Voice.encode(pcm, off, cnt);
+            Net.Buf v = new Net.Buf();
+            if (host) { if (roomPlayers > 1) toAll(v.u8('V').u8(g.me.id).u8(seq).u8(i).u8(parts).u16(cnt).raw(enc, 0, enc.length)); }
+            else toHost(v.u8('V').u8(seq).u8(i).u8(parts).u16(cnt).raw(enc, 0, enc.length));
         }
     }
 

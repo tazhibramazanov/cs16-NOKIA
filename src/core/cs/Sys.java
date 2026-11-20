@@ -26,4 +26,12 @@ public abstract class Sys {
     public Udp udp(int port) throws IOException { throw new IOException("нет сети"); }
     /** ask the user for a line of text (server address, nickname); cb gets null on cancel */
     public void editText(String title, String init, int maxLen, TextCb cb) { cb.done(null); }
+
+    // ---- push-to-talk voice chat
+    /** start recording the microphone; false if there is none */
+    public boolean micStart() { return false; }
+    /** stop recording; the clip (8 kHz mono) arrives later through cb, maybe on another thread */
+    public void micStop(VoiceCb cb) { cb.done(null, "нет микрофона"); }
+    /** play a received clip (8 kHz mono), vol 0..100 */
+    public void playVoice(short[] pcm, int vol) { }
 }

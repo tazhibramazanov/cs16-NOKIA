@@ -11,8 +11,9 @@ import javax.swing.*;
 
 /** Windows/PC test build: same engine as the phone, 320x240 scaled window, keyboard+mouse or phone-style keys. */
 public final class PCMain extends Sys implements KeyListener, MouseListener, MouseMotionListener, MouseWheelListener {
-    static final int GW = 320, GH = 240;
-    final int[] screen = new int[GW * GH];
+    int GW = 320, GH = 240;          // 320x240 horizontal, 240x320 vertical (setting «Экран», like on the phone)
+    int[] screen = new int[GW * GH];
+    int curOrient = 1;
     BufferedImage img, hiImg; int[] hiPix;
     Frame frame; Canvas canvas;
     Game game;
@@ -38,10 +39,10 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
 
     void run() throws Exception {
         Sys.s = this;
-        DataBufferInt db = new DataBufferInt(screen, screen.length);
-        img = new BufferedImage(new DirectColorModel(24, 0xFF0000, 0xFF00, 0xFF), Raster.createPackedRaster(db, GW, GH, GW, new int[]{0xFF0000, 0xFF00, 0xFF}, null), false, null);
+        makeImg();
         game = new Game(GW, GH, screen);
         game.pc = true;
+        game.orient = 1;   // first start: horizontal (saved setting wins)
         frame = new Frame("Counter-Strike 1.6 — Nokia E52 Edition (PC тест)");
         canvas = new Canvas();
         canvas.setBackground(Color.black);
@@ -54,6 +55,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
         blank = Toolkit.getDefaultToolkit().createCustomCursor(new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB), new Point(0, 0), "blank");
         try { frame.setIconImage(javax.imageio.ImageIO.read(open("/icon.png"))); } catch (Exception e) { }
         game.init();
+        if (game.orient != curOrient) setOrient(game.orient);
         applyScale();
         frame.setVisible(true);
         canvas.createBufferStrategy(2);
@@ -65,6 +67,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
             float dt = (now - last) / 1e9f; last = now;
             if (game.winScale != curScale) applyScale();
             synchronized (this) {
+                if (game.orient != curOrient) { setOrient(game.orient); applyScale(); }
                 game.tick(dt);
                 game.draw();
             }
@@ -80,6 +83,22 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     }
 
     boolean isOverlayMenu() { return false; }
+
+    void makeImg() {
+        DataBufferInt db = new DataBufferInt(screen, screen.length);
+        img = new BufferedImage(new DirectColorModel(24, 0xFF0000, 0xFF00, 0xFF), Raster.createPackedRaster(db, GW, GH, GW, new int[]{0xFF0000, 0xFF00, 0xFF}, null), false, null);
+        hiImg = null; hiPix = null;
+    }
+
+    /** «Экран»: 1 horizontal 320x240, 0 vertical 240x320 (the phone's picture) */
+    void setOrient(int o) {
+        curOrient = o;
+        GW = o == 1 ? 320 : 240; GH = o == 1 ? 240 : 320;
+        screen = new int[GW * GH];
+        makeImg();
+        game.resize(GW, GH, screen);
+        curScale = -1;
+    }
 
     void applyScale() {
         Rectangle scr = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
@@ -365,15 +384,100 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
         return b;
     }
 
+    final java.util.HashSet clipErrLogged = new java.util.HashSet();
+    Mixer decoder;   // only used to read .wav files for the fallback Clips
+
+    /** fallback when the mixer has no device: Windows often keeps short 8-bit 11 kHz Clips silent,
+     *  so each sound becomes 16-bit 44.1 kHz stereo with a little silence after it */
     Clip newClip(String name) {
         try {
-            byte[] b = wav(name);
-            if (b.length == 0) return null;
-            AudioInputStream ais = AudioSystem.getAudioInputStream(new ByteArrayInputStream(b));
+            if (decoder == null) { final PCMain self = this; decoder = new Mixer(new Mixer.Loader() { public InputStream open(String n) { return self.open(n); } }, new File(cfgDir, "sound_log.txt")); }
+            short[] d = decoder.load(name);
+            if (d == null || d.length == 0) return null;
+            return clipOf(d, ((Integer) decoder.rates.get(name)).intValue());
+        } catch (Throwable e) { if (clipErrLogged.add(name)) logSound("clip " + name + ": " + e); return null; }
+    }
+
+    Clip clipOf(short[] d, int rate) throws Exception {
+        {
+            int n = (int) ((long) d.length * 44100 / rate), pad = 44100 / 10;
+            byte[] out = new byte[(n + pad) * 4];
+            for (int i = 0; i < n; i++) {
+                long p = (long) i * rate * 65536 / 44100;
+                int idx = (int) (p >>> 16), f = (int) (p & 0xFFFF);
+                int a = d[Math.min(idx, d.length - 1)], b = d[Math.min(idx + 1, d.length - 1)];
+                int v = a + (((b - a) * f) >> 16);
+                out[i * 4] = out[i * 4 + 2] = (byte) v; out[i * 4 + 1] = out[i * 4 + 3] = (byte) (v >> 8);
+            }
             Clip c = AudioSystem.getClip();
-            c.open(ais);
+            c.open(new AudioFormat(44100, 16, 2, true, false), out, 0, out.length);
             return c;
-        } catch (Exception e) { return null; }
+        }
+    }
+
+    // ------------------------------------------------------------------ voice chat: microphone + playback
+    TargetDataLine micLine; AudioFormat micFmt; final ByteArrayOutputStream micBuf = new ByteArrayOutputStream();
+    volatile boolean micOn; Thread micThread;
+
+    public boolean micStart() {
+        if (micOn) return true;
+        AudioFormat[] fs = {new AudioFormat(8000, 16, 1, true, false), new AudioFormat(16000, 16, 1, true, false), new AudioFormat(44100, 16, 1, true, false),
+                new AudioFormat(48000, 16, 1, true, false), new AudioFormat(44100, 16, 2, true, false), new AudioFormat(48000, 16, 2, true, false)};
+        Throwable last = null;
+        for (int i = 0; i < fs.length && micLine == null; i++) {
+            try { TargetDataLine l = AudioSystem.getTargetDataLine(fs[i]); l.open(fs[i]); l.start(); micLine = l; micFmt = fs[i]; }
+            catch (Throwable e) { last = e; }
+        }
+        if (micLine == null) { logSound("microphone: " + last); return false; }
+        synchronized (micBuf) { micBuf.reset(); }
+        micOn = true;
+        final TargetDataLine line = micLine;
+        final int cap = (Voice.MAX_SEC + 1) * (int) micFmt.getSampleRate() * micFmt.getFrameSize();   // never keep more than ~7 s
+        micThread = new Thread(new Runnable() { public void run() {
+            byte[] buf = new byte[1024];
+            while (micOn) {
+                int r = line.read(buf, 0, buf.length);
+                if (r > 0) synchronized (micBuf) { if (micBuf.size() + r <= cap) micBuf.write(buf, 0, r); }
+                else if (r <= 0) { try { Thread.sleep(5); } catch (InterruptedException e) { } }
+            }
+        } }, "mic");
+        micThread.setDaemon(true); micThread.start();
+        return true;
+    }
+
+    public void micStop(final VoiceCb cb) {
+        if (!micOn || micLine == null) { cb.done(null, "запись не шла"); return; }
+        micOn = false;
+        final TargetDataLine line = micLine; final AudioFormat f = micFmt; final Thread t = micThread;
+        micLine = null;
+        new Thread(new Runnable() { public void run() {
+            try { line.stop(); } catch (Throwable e) { }
+            try { t.join(500); } catch (Throwable e) { }
+            try { line.close(); } catch (Throwable e) { }
+            byte[] b; synchronized (micBuf) { b = micBuf.toByteArray(); }
+            int ch = f.getChannels(), n = b.length / (2 * ch);
+            short[] s = new short[n];
+            for (int i = 0; i < n; i++) {
+                int sum = 0;
+                for (int c = 0; c < ch; c++) { int o = (i * ch + c) * 2; sum += (short) ((b[o] & 255) | (b[o + 1] << 8)); }
+                s[i] = (short) (sum / ch);
+            }
+            cb.done(Voice.to8k(s, n, (int) f.getSampleRate()), null);
+        } }, "mic-stop").start();
+    }
+
+    public void playVoice(final short[] pcm, int vol) {
+        if (vol <= 0) return;
+        Mixer mx = mixer();
+        if (mx != null && mx.alive) { mx.playData(pcm, Voice.RATE, "voice", Math.min(100, vol)); return; }
+        new Thread(new Runnable() { public void run() {
+            try { Clip c = clipOf(pcm, Voice.RATE); c.start(); Thread.sleep(pcm.length * 1000L / Voice.RATE + 400); c.close(); }
+            catch (Throwable e) { logSound("voice: " + e); }
+        } }).start();
+    }
+
+    void logSound(String s) {
+        try { FileWriter w = new FileWriter(new File(cfgDir, "sound_log.txt"), true); w.write(new java.util.Date() + "  " + s + "\r\n"); w.close(); } catch (Exception e) { }
     }
 
     void preloadAll() {
@@ -395,7 +499,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     final Vector queue = new Vector();
     Thread soundThread;
 
-    Mixer mixer; boolean mixerTried;
+    Mixer mixer; long mixerTriedAt = -1; boolean mixerLogged;
 
     public void preloadSounds(String[] names) {
         Mixer m = mixer();
@@ -403,11 +507,13 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     }
 
     Mixer mixer() {
-        if (!mixerTried) {
-            mixerTried = true;
+        long now = System.currentTimeMillis();
+        if (mixer == null && (mixerTriedAt < 0 || now - mixerTriedAt > 3000)) {   // device busy or not ready yet: try again every 3 s
+            mixerTriedAt = now;
             final PCMain self = this;
-            Mixer m = new Mixer(new Mixer.Loader() { public InputStream open(String n) { return self.open(n); } }, new File(cfgDir, "sound_log.txt"));
-            if (m.start()) mixer = m;
+            Mixer m = new Mixer(new Mixer.Loader() { public InputStream open(String n) { return self.open(n); } }, mixerLogged ? null : new File(cfgDir, "sound_log.txt"));   // details only on the first try
+            if (m.start()) { mixer = m; logSound("mixer started"); }
+            else if (!mixerLogged) { mixerLogged = true; logSound("mixer failed (" + m.error + "), using clips for now"); }
         }
         return mixer;
     }
@@ -415,6 +521,7 @@ public final class PCMain extends Sys implements KeyListener, MouseListener, Mou
     public void sound(String name, int vol) {
         if (vol <= 0) return;
         Mixer mx = mixer();
+        if (mx != null && !mx.alive) { logSound("mixer stopped, reopening"); mixer = null; mixerTriedAt = -1; mx = mixer(); }   // e.g. headphones unplugged
         if (mx != null) { mx.play(name, Math.min(100, vol)); return; }
         synchronized (queue) { if (queue.size() < 32) { queue.addElement(new Object[]{name, new Integer(vol)}); queue.notify(); } }
         if (soundThread == null) {

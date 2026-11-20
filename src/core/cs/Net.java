@@ -82,6 +82,7 @@ public final class Net implements Runnable {
         public Buf u16(int v) { need(2); b[n++] = (byte) (v >> 8); b[n++] = (byte) v; return this; }
         public Buf i16(float v) { int i = (int) (v < 0 ? v - 0.5f : v + 0.5f); if (i > 32767) i = 32767; if (i < -32768) i = -32768; return u16(i); }
         public Buf i32(int v) { u16(v >>> 16); return u16(v & 0xFFFF); }
+        public Buf raw(byte[] x, int off, int len) { if (len <= 0) return this; need(len); System.arraycopy(x, off, b, n, len); n += len; return this; }
         public Buf str(String s) {
             if (s == null) s = "";
             try { byte[] u = s.getBytes("UTF-8"); int l = Math.min(u.length, 255); u8(l); need(l); System.arraycopy(u, 0, b, n, l); n += l; } catch (Exception e) { u8(0); }

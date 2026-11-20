@@ -340,7 +340,7 @@ public final class Game {
     // ======================================================================= settings
     void loadSettings() {
         byte[] b = Sys.s.load();
-        if (b == null || b.length < 30 || b[0] < 2 || b[0] > 5) return;
+        if (b == null || b.length < 30 || b[0] < 2 || b[0] > 7) return;
         int k = 1;
         sens = b[k++]; sensV = b[k++]; invert = b[k++] != 0; layout = b[k++]; difficulty = b[k++]; volume = b[k++]; quality = b[k++];
         soundOn = b[k++] != 0; showFps = b[k++] != 0; maxRounds = b[k++]; autoAim = b[k++] != 0; gammaIdx = b[k++]; crossCol = b[k++]; crossSize = b[k++];
@@ -349,7 +349,9 @@ public final class Game {
         cMoney = ((b[k++] & 255) << 8 | (b[k++] & 255)) * 100; cFF = b[k++] != 0; fpsCap20 = b[k++] != 0; pcMouse = b[k++] != 0;
         if (b[0] >= 3) { gfx = b[k++]; if (gfx < 0 || gfx > 3) gfx = 1; }
         if (b[0] >= 4) { nfr = b[k++]; if (nfr < 0 || nfr > 5) nfr = 0; }
-        if (b[0] >= 5) { orient = b[k++]; if (orient < 0 || orient > 1 || pc) orient = 0; }
+        if (b[0] >= 5) { orient = b[k++]; if (orient < 0 || orient > 1) orient = pc ? 1 : 0; }
+        if (pc && b[0] < 6) orient = 1;   // older PC saves had no screen choice: horizontal
+        if (b[0] >= 7) { voiceOn = b[k++] != 0; voiceVol = b[k++]; if (voiceVol < 10 || voiceVol > 100) voiceVol = 100; }
         if (sens < 1 || sens > 10) sens = 5; if (sensV < 1 || sensV > 10) sensV = 5; if (difficulty < 0 || difficulty > 3) difficulty = 1;
         if (quality < 0 || quality > 3) quality = 0; if (maxRounds < 3 || maxRounds > 30) maxRounds = 15; if (gammaIdx < 0 || gammaIdx > 4) gammaIdx = 1;
         if (crossCol < 0 || crossCol > 4) crossCol = 0; if (crossSize < 0 || crossSize > 2) crossSize = 1; if (winScale < 1 || winScale > 4) winScale = 3;
@@ -357,9 +359,10 @@ public final class Game {
         if (cRoundTime < 60 || cRoundTime > 300) cRoundTime = 135; if (cBuyTime < 15 || cBuyTime > 90) cBuyTime = 45; if (cFreeze < 0 || cFreeze > 10) cFreeze = 3;
         if (cMoney < 800 || cMoney > 16000) cMoney = 800; if (layout < 0 || layout > 2) layout = 0;
         boolean got = false;
-        if (b.length > k && b[k] == Binds.N && bPhone.read(b, k + 1)) got = bPC.read(b, k + 1 + Binds.N * 8);
+        int bn = b.length > k ? b[k] : 0;   // actions in the save (older versions: fewer)
+        if (bn > 0 && bn <= Binds.N && bPhone.read(b, k + 1, bn)) got = bPC.read(b, k + 1 + bn * 8, bn);
         if (got && b[0] >= 5) {
-            Net.Rd rd = new Net.Rd(b, k + 1 + Binds.N * 16);
+            Net.Rd rd = new Net.Rd(b, k + 1 + bn * 16);
             if (rd.more()) mpServer = rd.str(); if (rd.more()) mpName = rd.str();
             if (mpServer.indexOf('.') < 0) mpServer = "";   // "1111" and other non-addresses -> automatic internet server
         }
@@ -367,11 +370,11 @@ public final class Game {
     }
 
     public void saveSettings() {
-        byte[] b = new byte[]{5, (byte) sens, (byte) sensV, (byte) (invert ? 1 : 0), (byte) layout, (byte) difficulty, (byte) volume, (byte) quality,
+        byte[] b = new byte[]{7, (byte) sens, (byte) sensV, (byte) (invert ? 1 : 0), (byte) layout, (byte) difficulty, (byte) volume, (byte) quality,
                 (byte) (soundOn ? 1 : 0), (byte) (showFps ? 1 : 0), (byte) maxRounds, (byte) (autoAim ? 1 : 0), (byte) gammaIdx, (byte) crossCol, (byte) crossSize,
                 (byte) (crossDyn ? 1 : 0), (byte) (viewBobOn ? 1 : 0), (byte) (radarOn ? 1 : 0), (byte) (firstRunDone ? 1 : 0), (byte) winScale,
                 (byte) cMap, (byte) cTeam, (byte) cBots, (byte) (cRoundTime / 15), (byte) (cBuyTime / 5), (byte) cFreeze,
-                (byte) ((cMoney / 100) >> 8), (byte) (cMoney / 100), (byte) (cFF ? 1 : 0), (byte) (fpsCap20 ? 1 : 0), (byte) (pcMouse ? 1 : 0), (byte) gfx, (byte) nfr, (byte) orient};
+                (byte) ((cMoney / 100) >> 8), (byte) (cMoney / 100), (byte) (cFF ? 1 : 0), (byte) (fpsCap20 ? 1 : 0), (byte) (pcMouse ? 1 : 0), (byte) gfx, (byte) nfr, (byte) orient, (byte) (voiceOn ? 1 : 0), (byte) voiceVol};
         Net.Buf sb = new Net.Buf().str(mpServer).str(mpName);
         byte[] all = new byte[b.length + 1 + Binds.N * 16 + sb.n];
         System.arraycopy(b, 0, all, 0, b.length);
@@ -428,6 +431,137 @@ public final class Game {
         Sys.s.sound(name, vol * volume / 100);
     }
 
+    // ======================================================================= voice chat (push-to-talk, like a walkie-talkie)
+    public boolean voiceOn = true;
+    public int voiceVol = 100;
+    boolean voiceRec, voiceHeld;
+    long voiceRecStart;
+    final Object voiceLock = new Object();
+    short[] voiceOut; String voiceErr;   // filled by the microphone callback (another thread)
+    String talkName; long talkUntil;     // who is speaking now
+    int voiceSeq;
+    // incoming clips put together from their parts, one slot per player
+    byte[][][] vParts; int[] vSeq, vGot, vCount; int[][] vLen;
+
+    // ---- "Проверить микрофон": record 3 s and play it back to yourself
+    int micTestState;        // 0 idle, 1 recording, 2 waiting for the clip, 3 playing back
+    long micTestAt; String micTestMsg; long micTestMsgUntil;
+    short[] micTestOut; String micTestErr;
+
+    String micTestLabel() {
+        long now = Sys.s.millis();
+        switch (micTestState) {
+            case 1: return "Говорите... " + Math.max(1, (int) (3999 - (now - micTestAt)) / 1000) + " с";
+            case 2: return "Обработка записи...";
+            case 3: return "Слушайте себя...";
+        }
+        if (micTestMsg != null && now < micTestMsgUntil) return micTestMsg;
+        return "Проверить микрофон";
+    }
+
+    void micTest() {
+        if (micTestState != 0) return;
+        if (voiceRec) return;
+        if (Sys.s.micStart()) { micTestState = 1; micTestAt = Sys.s.millis(); }
+        else { micTestMsg = "Микрофон недоступен"; micTestMsgUntil = Sys.s.millis() + 5000; }
+    }
+
+    void micTestTick() {
+        if (micTestState == 0) return;
+        long now = Sys.s.millis();
+        if (micTestState == 1 && now - micTestAt >= 3000) {
+            micTestState = 2; micTestAt = now;
+            Sys.s.micStop(new VoiceCb() {
+                public void done(short[] pcm, String err) { synchronized (voiceLock) { micTestOut = pcm; micTestErr = pcm == null ? (err != null ? err : "пустая запись") : null; } }
+            });
+        }
+        if (micTestState == 2) {
+            short[] c; String e;
+            synchronized (voiceLock) { c = micTestOut; e = micTestErr; micTestOut = null; micTestErr = null; }
+            if (e != null) { micTestState = 0; micTestMsg = "Ошибка — " + e; micTestMsgUntil = now + 8000; }
+            else if (c != null) {
+                int peak = 0; for (int i = 0; i < c.length; i++) { int v = c[i] < 0 ? -c[i] : c[i]; if (v > peak) peak = v; }
+                if (peak < 60) { micTestState = 0; micTestMsg = "Тишина — микрофон выключен или занят"; micTestMsgUntil = now + 8000; }
+                else {
+                    Voice.normalize(c, c.length);
+                    Sys.s.playVoice(c, Math.max(30, voiceVol * volume / 100));
+                    micTestState = 3; micTestAt = now + c.length * 1000L / Voice.RATE + 300;
+                }
+            } else if (now - micTestAt > 6000) { micTestState = 0; micTestMsg = "Запись не пришла"; micTestMsgUntil = now + 8000; }
+        }
+        if (micTestState == 3 && now >= micTestAt) { micTestState = 0; micTestMsg = "Готово. Слышали себя?"; micTestMsgUntil = now + 4000; }
+    }
+
+    void voiceTick() {
+        micTestTick();
+        boolean held = (keys & Binds.A_VOICE) != 0 && state == ST_PLAY && menu == M_NONE && !buyOpen;
+        long now = Sys.s.millis();
+        if (held && !voiceHeld && !voiceRec && micTestState == 0) {
+            if (mp == null || mp.phase != 2) center("Голосовой чат — только в сетевой игре", 2, 0xFFE080);
+            else if (!voiceOn) center("Голосовой чат выключен (Настройки → Звук)", 2, 0xFFE080);
+            else if (Sys.s.micStart()) { voiceRec = true; voiceRecStart = now; }
+            else center("Микрофон недоступен", 2, 0xFF8060);
+        }
+        if (voiceRec && (!held || now - voiceRecStart >= Voice.MAX_SEC * 1000)) {
+            voiceRec = false;
+            final boolean tooShort = now - voiceRecStart < 250;
+            Sys.s.micStop(new VoiceCb() {
+                public void done(short[] pcm, String err) {
+                    synchronized (voiceLock) { if (pcm != null && !tooShort) voiceOut = pcm; else if (err != null) voiceErr = err; }
+                }
+            });
+        }
+        voiceHeld = held;
+        short[] out; String err;
+        synchronized (voiceLock) { out = voiceOut; err = voiceErr; voiceOut = null; voiceErr = null; }
+        if (err != null) center("Микрофон: " + err, 3, 0xFF8060);
+        if (out != null && mp != null && mp.phase == 2) {
+            mp.sendVoice(out);
+            if (mp.roomPlayers <= 1) center("Голос отправлен, но в комнате больше никого нет", 2, 0xFFE080);
+        }
+    }
+
+    /** a part of a clip from player pid (sent by the host) */
+    void voiceIn(int pid, int seq, int part, int parts, int n, byte[] b, int off) {
+        if (pl == null || pid >= pl.length || pl[pid] == me || parts < 1 || parts > 16 || part >= parts) return;
+        if (vParts == null || vParts.length != pl.length) {
+            int k = pl.length; vParts = new byte[k][][]; vSeq = new int[k]; vGot = new int[k]; vCount = new int[k]; vLen = new int[k][];
+            for (int i = 0; i < k; i++) vSeq[i] = -1;
+        }
+        if (vSeq[pid] != seq || vParts[pid] == null || vParts[pid].length != parts) {
+            vSeq[pid] = seq; vParts[pid] = new byte[parts][]; vLen[pid] = new int[parts]; vGot[pid] = 0; vCount[pid] = parts;
+        }
+        if (vParts[pid][part] != null) return;
+        int bytes = (n + 1) / 2;
+        if (off + bytes > b.length) return;
+        byte[] c = new byte[bytes]; System.arraycopy(b, off, c, 0, bytes);
+        vParts[pid][part] = c; vLen[pid][part] = n;
+        if (++vGot[pid] < vCount[pid]) return;
+        int total = 0;
+        for (int i = 0; i < parts; i++) total += vLen[pid][i];
+        short[] pcm = new short[total];
+        for (int i = 0, at = 0; i < parts; i++) { Voice.decode(vParts[pid][i], 0, vLen[pid][i], pcm, at); at += vLen[pid][i]; }
+        vParts[pid] = null; vSeq[pid] = -1;
+        if (!soundOn || !voiceOn) return;
+        Sys.s.playVoice(pcm, voiceVol * volume / 100);
+        talkName = pl[pid].name; talkUntil = Sys.s.millis() + total * 1000L / Voice.RATE + 300;
+    }
+
+    void drawVoice() {
+        long now = Sys.s.millis();
+        String s; int col;
+        if (voiceRec) {
+            s = "Говорите... " + (int) (Voice.MAX_SEC * 1000 - (now - voiceRecStart) + 999) / 1000 + " с";
+            col = (now / 400 & 1) == 0 ? 0xFF4040 : 0xFFA0A0;
+        } else if (talkName != null && now < talkUntil) { s = "Говорит: " + talkName; col = 0x80FF80; }
+        else return;
+        int w = gx.textW(gx.f1, s) + 10;
+        // landscape: above the health/ammo bar; portrait: under the radar (chat and kill feed live elsewhere)
+        int x = port() ? 4 : W / 2 - w / 2, y = port() ? 92 : H - 52;
+        gx.fill(x, y, w, 15, 0, 160);
+        gx.text(gx.f1, s, x + 5, y + 2, col);
+    }
+
     void center(String s, float dur, int col) { centerMsg = s; centerMsgUntil = time + dur; centerCol = col; }
 
     // ======================================================================= input
@@ -442,7 +576,7 @@ public final class Game {
             key(rep, true);
             return;
         }
-        for (int bit = 1; bit != 0 && bit <= Binds.A_TABR; bit <<= 1) if ((mask & bit) != 0) {
+        for (int bit = 1; bit != 0 && bit <= Binds.A_VOICE; bit <<= 1) if ((mask & bit) != 0) {
             key(bit, down);
             if (down && (menu != M_NONE || buyOpen || state != ST_PLAY)) break;   // a menu just opened: the other bits of this key are not for it
         }
@@ -587,17 +721,17 @@ public final class Game {
                 String[] a = {"Графика: " + GFXN[gfx], "Разрешение: " + (nfr > 0 ? "DLSS " + r.W + "x" + r.H : qualName()), "Nokia FR и DLSS: " + nfrName(), "Яркость: " + (gammaIdx + 1) + "/5", "Покачивание оружия: " + onoff(viewBobOn),
                         "Цвет прицела: " + CROSS[crossCol], "Размер прицела: " + (crossSize == 0 ? "малый" : crossSize == 1 ? "средний" : "большой"),
                         "Динамический прицел: " + onoff(crossDyn), "Радар: " + onoff(radarOn), "Показывать FPS: " + onoff(showFps), "OK"};
-                if (pc) a = new String[]{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], "Размер окна: x" + winScale,
+                if (pc) a = new String[]{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], "Экран: " + ORIENTN[orient], "Размер окна: x" + winScale,
                         "Лимит FPS: " + (fpsCap20 ? "20 (как на E52)" : "60"), "OK"};
                 else a = new String[]{a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], "Экран: " + ORIENTN[orient],
                         "Лимит FPS: " + (fpsCap20 ? "20 (меньше греется)" : "без лимита"), "OK"};
                 return a;
             }
             case M_CTRL: return new String[]{
-                    pc ? "Схема: " + (pcMouse ? "клавиатура + мышь" : "как на телефоне") : "Раскладка: " + (layout == 0 ? "классическая" : layout == 1 ? "альтернативная" : "своя"),
+                    pc ? "Схема: " + (pcMouse ? "клавиатура + мышь" : "как на телефоне, " + layoutName()) : "Раскладка: " + layoutName(),
                     "Чувствительность: " + sens, "Вверх/вниз: " + sensV, (pc && pcMouse ? "Инверсия мыши: " : "Инверсия взгляда: ") + onoff(invert),
                     "Помощь прицеливания: " + onoff(autoAim), "OK"};
-            case M_SND: return new String[]{"Звук: " + onoff(soundOn), "Громкость: " + volume + "%", "OK"};
+            case M_SND: return new String[]{"Звук: " + onoff(soundOn), "Громкость: " + volume + "%", "Голосовой чат: " + onoff(voiceOn), "Громкость голоса: " + voiceVol + "%", micTestLabel(), "OK"};
             case M_FIRST1: return pc ? new String[]{"Клавиатура + мышь (как в CS)", "Как на телефоне (цифры и стрелки)"}
                     : new String[]{"Классика: 2468 ходьба", "Альтернатива: джойстик ходьба"};
             case M_FIRST2: return new String[]{"Авто (держит ~20 FPS)", "Максимум " + resName(0), "Среднее " + resName(2), "Низкое " + resName(4)};
@@ -671,13 +805,21 @@ public final class Game {
                     case 7: crossDyn = !crossDyn; return true;
                     case 8: radarOn = !radarOn; return true;
                     case 9: showFps = !showFps; return true;
-                    case 10: if (pc) { winScale = (winScale + 3 + dir) % 4 + 1; return true; } orient = 1 - orient; return true;
-                    case 11: fpsCap20 = !fpsCap20; return true;
+                    case 10: orient = 1 - orient; return true;
+                    case 11: if (pc) { winScale = (winScale + 3 + dir) % 4 + 1; return true; } fpsCap20 = !fpsCap20; return true;
+                    case 12: if (pc) { fpsCap20 = !fpsCap20; return true; } return false;
                 }
                 return false;
             case M_CTRL:
                 switch (menuSel) {
-                    case 0: if (!pc) { layout = layout == 0 ? 1 : 0; bPhone.phoneDefaults(layout); } else pcMouse = !pcMouse; return true;
+                    case 0:
+                        if (!pc) { layout = layout == 0 ? 1 : 0; bPhone.phoneDefaults(layout); return true; }
+                        // PC: клавиатура + мышь -> как на телефоне (классическая) -> (альтернативная) -> ...
+                        int st = pcMouse ? 0 : layout == 1 ? 2 : 1;
+                        st = (st + 3 + dir) % 3;
+                        if (st == 0) pcMouse = true;
+                        else { pcMouse = false; layout = st - 1; bPhone.phoneDefaults(layout); }
+                        return true;
                     case 1: sens += dir; if (sens > 10) sens = 1; if (sens < 1) sens = 10; return true;
                     case 2: sensV += dir; if (sensV > 10) sensV = 1; if (sensV < 1) sensV = 10; return true;
                     case 3: invert = !invert; return true;
@@ -691,6 +833,8 @@ public final class Game {
                 switch (menuSel) {
                     case 0: soundOn = !soundOn; if (!soundOn) Sys.s.stopSounds(); return true;
                     case 1: volume += dir * 10; if (volume > 100) volume = 10; if (volume < 10) volume = 100; return true;
+                    case 2: voiceOn = !voiceOn; return true;
+                    case 3: voiceVol += dir * 10; if (voiceVol > 100) voiceVol = 10; if (voiceVol < 10) voiceVol = 100; return true;
                 }
                 return false;
         }
@@ -780,6 +924,7 @@ public final class Game {
                 if (menuSel == 3) { menu = M_PAUSE; menuSel = 1; break; }
                 switchTeam(menuSel == 2 ? 1 + (rnd.nextInt() & 1) : menuSel + 1); menu = M_NONE; break;
             case M_GFX: case M_CTRL: case M_SND:
+                if (menu == M_SND && menuSel == 4) { micTest(); break; }
                 if (menuSel == it.length - 1) closeOptions();
                 break;
             case M_BINDS:
@@ -831,6 +976,7 @@ public final class Game {
     public final Binds bPhone = new Binds(), bPC = new Binds();
     public int bindCapture = -1; long bindUntil; int bindsReturn = M_CTRL;
     static final int M_BINDS = 15;
+    String layoutName() { return layout == 0 ? "классическая" : layout == 1 ? "альтернативная" : "своя"; }
     public Binds binds() { return pc && pcMouse ? bPC : bPhone; }
     public int bindMask(int code) { return binds().mask(code); }
     public String keyName(int c) {
@@ -1101,6 +1247,7 @@ public final class Game {
     // ======================================================================= main tick
     public void tick(float dt) {
         realDt = dt;
+        voiceTick();
         if (quality == 0 && nfr == 0 && state == ST_PLAY && menu == M_NONE) {
             autoAcc += dt; autoFrames++;
             if (autoAcc >= 1.5f) {
@@ -2569,6 +2716,7 @@ public final class Game {
             if (specIdx >= 0) { Player q = pl[specIdx]; gx.textS(gx.f1, "HP " + q.health, 4, H - 32, 0xFFA000); }
         }
         if (centerMsg != null && time < centerMsgUntil) gx.textC(gx.f2, centerMsg, W / 2, H / 3 - 10, centerCol);
+        drawVoice();
         if (time < freezeEnd && !roundOver && !spec) gx.textC(gx.f1, "Закупка: # (решётка)", W / 2, H / 3 + 12, 0xD0D0D0);
         if (showFps) gx.textS(gx.f1, nfr > 0 ? fps + " fps (+" + genFps + " Nokia FR)" : fps + " fps" + (quality == 0 ? " (" + r.W + "x" + r.H + ")" : ""), 4, 80, 0x80FF80);
         if (buyOpen) drawBuyMenu();

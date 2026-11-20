@@ -4,6 +4,9 @@ import java.io.*;
 import java.util.*;
 import javax.microedition.media.*;
 import javax.microedition.media.control.VolumeControl;
+import javax.microedition.media.control.RecordControl;
+import cs.Voice;
+import cs.VoiceCb;
 import javax.microedition.rms.*;
 import cs.Sys;
 import cs.Conn;
@@ -176,6 +179,91 @@ public final class MidpSys extends Sys implements Runnable {
         } catch (Throwable t) {
             // ignore single failures
         }
+    }
+
+    // ------------------------------------------------------------------ voice chat (push-to-talk)
+    private final Object micLock = new Object();
+    private Player micPlayer; private RecordControl micRc; private ByteArrayOutputStream micOut;
+    private int micState;          // 0 idle, 1 starting, 2 recording, 3 being stopped
+    private String micErr;
+    private boolean micDenied;
+
+    public boolean micStart() {
+        if (micDenied || "false".equals(System.getProperty("supports.audio.capture"))) return false;
+        synchronized (micLock) { if (micState != 0) return false; micState = 1; micErr = null; }
+        new Thread(new Runnable() { public void run() { recStart(); } }).start();   // realize() can take a moment
+        return true;
+    }
+
+    private void recStart() {
+        String[] urls = {"capture://audio?encoding=pcm&rate=8000&bits=16&channels=1", "capture://audio?encoding=pcm", "capture://audio"};
+        String err = "нет записи звука";
+        for (int i = 0; i < urls.length; i++) {
+            Player p = null;
+            try {
+                p = Manager.createPlayer(urls[i]);
+                p.realize();
+                RecordControl rc = (RecordControl) p.getControl("RecordControl");
+                if (rc == null) { p.close(); continue; }
+                ByteArrayOutputStream o = new ByteArrayOutputStream();
+                rc.setRecordStream(o);
+                try { rc.setRecordSizeLimit(600000); } catch (Throwable t) { }   // ~7 s even at 44 kHz
+                rc.startRecord();
+                p.start();
+                synchronized (micLock) { micPlayer = p; micRc = rc; micOut = o; micState = 2; micLock.notifyAll(); }
+                return;
+            } catch (SecurityException e) {
+                err = "запись запрещена (разрешите её в настройках приложения)"; micDenied = true;
+                try { if (p != null) p.close(); } catch (Throwable t) { }
+                break;
+            } catch (Throwable t) {
+                err = t.getMessage() != null ? t.getMessage() : t.toString();
+                try { if (p != null) p.close(); } catch (Throwable t2) { }
+            }
+        }
+        synchronized (micLock) { micState = 0; micErr = err; micLock.notifyAll(); }
+    }
+
+    public void micStop(final VoiceCb cb) {
+        new Thread(new Runnable() { public void run() {
+            Player p; RecordControl rc; ByteArrayOutputStream o;
+            synchronized (micLock) {
+                long t0 = System.currentTimeMillis();
+                while (micState == 1 && System.currentTimeMillis() - t0 < 4000) { try { micLock.wait(200); } catch (InterruptedException e) { } }
+                if (micState != 2) { String e = micErr != null ? micErr : "запись не началась"; if (micState == 1) micState = 0; cb.done(null, e); return; }
+                micState = 3; p = micPlayer; rc = micRc; o = micOut;
+            }
+            try { rc.stopRecord(); } catch (Throwable t) { }
+            try { rc.commit(); } catch (Throwable t) { }
+            try { p.close(); } catch (Throwable t) { }
+            byte[] b = o.toByteArray();
+            synchronized (micLock) { micState = 0; micPlayer = null; micRc = null; micOut = null; }
+            short[] pcm = Voice.fromWav(b);
+            if (pcm == null && b.length > 64 && b[0] != 'R' && b[0] != '#') {   // raw 8 kHz 16-bit without a header
+                int n = b.length / 2; pcm = new short[n];
+                for (int i = 0; i < n; i++) pcm[i] = (short) ((b[i * 2] & 255) | (b[i * 2 + 1] << 8));
+            }
+            if (pcm == null) cb.done(null, b.length == 0 ? "пустая запись" : "телефон записал звук в другом формате");
+            else cb.done(pcm, null);
+        } }).start();
+    }
+
+    public void playVoice(final short[] pcm, final int vol) {
+        if (soundBroken || vol <= 0 || pcm == null) return;
+        new Thread(new Runnable() { public void run() {
+            try {
+                Player p = Manager.createPlayer(new ByteArrayInputStream(Voice.wav(pcm, pcm.length)), "audio/x-wav");
+                p.addPlayerListener(new PlayerListener() {
+                    public void playerUpdate(Player pl, String ev, Object d) {
+                        if (PlayerListener.END_OF_MEDIA.equals(ev) || PlayerListener.ERROR.equals(ev)) { try { pl.close(); } catch (Throwable t) { } }
+                    }
+                });
+                p.realize();
+                VolumeControl vc = (VolumeControl) p.getControl("VolumeControl");
+                if (vc != null) vc.setLevel(vol > 100 ? 100 : vol);
+                p.start();
+            } catch (Throwable t) { }
+        } }).start();
     }
 
     public int[] image(String name, int[] wh) {

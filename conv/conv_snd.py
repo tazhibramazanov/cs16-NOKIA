@@ -20,7 +20,7 @@ def conv(src, dst, rate=11025, gain=1.0):
 if __name__=='__main__':
     out=sys.argv[1]; os.makedirs(out,exist_ok=True); tot=0
     for f in sorted(glob.glob(SRC+'*/*.wav')):
-        rel=f[len(SRC):]
+        rel=f[len(SRC):].replace('\\','/')   # Windows gives weapons\\ak47-1.wav
         nm=rel.replace('/','_').replace('-','_').lower()
         try: tot+=conv(f, os.path.join(out,nm))
         except Exception as e: print('ERR',rel,e)
@@ -31,4 +31,12 @@ if __name__=='__main__':
         if not os.path.exists(os.path.join(out, nm)) and os.path.exists(f):
             try: tot += conv(f, os.path.join(out, nm))
             except Exception as e: print('ERR', rel, e)
+    # menu clicks live in cstrike/resource/UI (not in sound/)
+    for src, nm in (('buttonclick.wav', 'ui_buttonclick.wav'), ('buttonrollover.wav', 'ui_buttonrollover.wav')):
+        for d in ('/cstrike/resource/UI/', '/cstrike/resource/ui/', '/valve/resource/UI/', '/valve/resource/ui/'):
+            f = GAME + d + src
+            if os.path.exists(f):
+                try: tot += conv(f, os.path.join(out, nm))
+                except Exception as e: print('ERR', src, e)
+                break
     print('total bytes',tot, len(glob.glob(out+'/*.wav')),'files')

@@ -3,21 +3,21 @@ package cs;
 /** User-editable key bindings: every action has up to two keys (like "bind" in CS). */
 public final class Binds {
     // extra actions (beyond Game.A_*), only reachable through bindings
-    public static final int A_LASTW = 1 << 21, A_DROP = 1 << 22, A_RADIO = 1 << 23;
+    public static final int A_LASTW = 1 << 21, A_DROP = 1 << 22, A_RADIO = 1 << 23, A_VOICE = 1 << 29;   // A_VOICE: hold to talk
     // navigation-only bits added by the platform for fixed keys (joystick / arrows / Enter / Esc)
     public static final int A_LEFT = 1 << 24, A_RIGHT = 1 << 25, A_ESC = 1 << 26, A_TABL = 1 << 27, A_TABR = 1 << 28;
 
     public static final String[] NAME = {"Вперёд", "Назад", "Шаг влево", "Шаг вправо", "Поворот влево", "Поворот вправо",
             "Взгляд вверх", "Взгляд вниз", "Огонь", "Прыжок", "Присесть", "Перезарядка", "Обезвредить/исп.",
             "След. оружие", "Прошлое оружие", "Прицел/глушитель", "Выбросить оружие", "Закупка / меню #", "Радиокоманды",
-            "Пауза/настройки", "Счёт"};
+            "Пауза/настройки", "Счёт", "Голос. чат (держать)"};
     public static final int[] ACT = {Game.A_FWD, Game.A_BACK, Game.A_STRL, Game.A_STRR, Game.A_TURNL, Game.A_TURNR,
             Game.A_LOOKU, Game.A_LOOKD, Game.A_FIRE, Game.A_JUMP, Game.A_DUCK, Game.A_RELOAD, Game.A_USE,
-            Game.A_NEXTW, A_LASTW, Game.A_ALT, A_DROP, Game.A_BUY, A_RADIO, Game.A_MENU, Game.A_SCORE};
+            Game.A_NEXTW, A_LASTW, Game.A_ALT, A_DROP, Game.A_BUY, A_RADIO, Game.A_MENU, Game.A_SCORE, A_VOICE};
     public static final int N = ACT.length;
 
     // phone key codes (MIDP canonical): digits '0'..'9', '*', '#', joystick -1..-5, soft keys -6/-7, C = -8
-    public static final int K_UP = -1, K_DOWN = -2, K_LEFT = -3, K_RIGHT = -4, K_FIRE = -5, K_LSOFT = -6, K_RSOFT = -7, K_CLEAR = -8;
+    public static final int K_UP = -1, K_DOWN = -2, K_LEFT = -3, K_RIGHT = -4, K_FIRE = -5, K_LSOFT = -6, K_RSOFT = -7, K_CLEAR = -8, K_CALL = -10;
     // PC: mouse pseudo-codes
     public static final int M_L = 0x10001, M_R = 0x10002, M_M = 0x10003, M_WUP = 0x10004, M_WDN = 0x10005;
 
@@ -67,6 +67,7 @@ public final class Binds {
         }
         set(2, '4', 0); set(3, '6', 0); set(8, '5', K_FIRE); set(9, '1', 0); set(10, '3', 0); set(11, '7', 0); set(12, '0', 0);
         set(13, '9', 0); set(15, '*', 0); set(17, '#', 0); set(19, K_LSOFT, K_CLEAR); set(20, K_RSOFT, 0);
+        set(21, K_CALL, 0);   // the green call key is the only free one on E52-like phones
     }
 
     /** AWT virtual key codes (kept numeric so the core stays CLDC-only) */
@@ -74,16 +75,21 @@ public final class Binds {
         for (int i = 0; i < N; i++) { k1[i] = 0; k2[i] = 0; }
         set(0, 'W', 0); set(1, 'S', 0); set(2, 'A', 0); set(3, 'D', 0); set(4, 37, 0); set(5, 39, 0); set(6, 38, 0); set(7, 40, 0);
         set(8, M_L, 0); set(9, ' ', 0); set(10, 17, 0); set(11, 'R', 0); set(12, 'E', 0); set(13, M_WDN, M_WUP); set(14, 'Q', 0);
-        set(15, M_R, 0); set(16, 'G', 0); set(17, 'B', 0); set(18, 'Z', 0); set(19, 27, 0); set(20, 9, 0);
+        set(15, M_R, 0); set(16, 'G', 0); set(17, 'B', 0); set(18, 'Z', 0); set(19, 27, 0); set(20, 9, 0); set(21, 'K', 0);   // K = voice, like in CS 1.6
     }
 
     public void write(byte[] b, int o) {
         for (int i = 0; i < N; i++) { put(b, o + i * 8, k1[i]); put(b, o + i * 8 + 4, k2[i]); }
     }
 
-    public boolean read(byte[] b, int o) {
-        if (b.length < o + N * 8) return false;
-        for (int i = 0; i < N; i++) { k1[i] = get(b, o + i * 8); k2[i] = get(b, o + i * 8 + 4); }
+    /** n = how many actions the save has (older versions had fewer: the new ones keep their default keys) */
+    public boolean read(byte[] b, int o, int n) {
+        if (n < 1 || n > N || b.length < o + n * 8) return false;
+        for (int i = 0; i < n; i++) {
+            int a = get(b, o + i * 8), c = get(b, o + i * 8 + 4);
+            for (int j = n; j < N; j++) { if (k1[j] == a || k1[j] == c) k1[j] = 0; if (k2[j] == a || k2[j] == c) k2[j] = 0; }   // a key the player already uses elsewhere
+            k1[i] = a; k2[i] = c;
+        }
         for (int i = 0; i < N; i++) if (k1[i] == 0 && k2[i] != 0) { k1[i] = k2[i]; k2[i] = 0; }
         return true;
     }
@@ -105,7 +111,7 @@ public final class Binds {
             case K_LSOFT: return "Лев. софт";
             case K_RSOFT: return "Прав. софт";
             case K_CLEAR: return "C";
-            case -10: return "Вызов";
+            case K_CALL: return "Зелёная (вызов)";
             case -50: return "Карандаш";
         }
         return "Клавиша " + c;

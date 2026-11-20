@@ -98,7 +98,12 @@ final class Mixer implements Runnable {
     void play(String name, int vol) {
         short[] d = load(name);
         if (d == null || !alive) return;
-        int rate = ((Integer) rates.get(name)).intValue();
+        playData(d, ((Integer) rates.get(name)).intValue(), name, vol);
+    }
+
+    /** raw samples (voice chat) */
+    void playData(short[] d, int rate, String name, int vol) {
+        if (d == null || !alive) return;
         synchronized (this) {
             int slot = -1, oldest = -1, op = -1;
             for (int i = 0; i < VOICES; i++) {
@@ -150,7 +155,7 @@ final class Mixer implements Runnable {
         byte[] out = new byte[BLOCK * fmt.getChannels() * (fmt.getSampleSizeInBits() / 8)];
         while (alive) {
             int o = mixBlock(out);
-            try { line.write(out, 0, o); } catch (Throwable e) { log("write: " + e); alive = false; }
+            try { line.write(out, 0, o); } catch (Throwable e) { log("write: " + e); alive = false; try { line.close(); } catch (Throwable e2) { } }
         }
     }
 }
