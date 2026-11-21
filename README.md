@@ -1,103 +1,90 @@
 # CS 1.6 — Nokia E52 Edition
 
-Свой движок, который запускает **Counter-Strike 1.6** на кнопочных смартфонах **Nokia на Symbian** (делалось и проверено на Nokia E52) и на Windows-ПК.
+A custom engine that runs **Counter-Strike 1.6** on button **Nokia Symbian smartphones** (built and tested on a Nokia E52) and on Windows PCs.
 
-## На каких Nokia работает
+**English** · [Русская версия](README_RU.md)
 
-Игра сама подстраивается под экран: растягивает картинку на весь экран и на широких экранах сама включает горизонтальный режим.
+## Which Nokia phones it runs on
 
-| Телефоны | Работает? |
+The game adapts to the screen by itself: it stretches the picture to fill the display and switches to landscape on wide screens.
+
+| Phones | Works? |
 |---|---|
-| **Symbian S60 3rd Edition** с кнопками: E52, E55, E71, E72, E63, E66, E75, E5, N95, N82, N78, N79, N86, 6120, 6220, 6710, 5730, E51 и другие | ✅ да (`.sisx` или `.jar`) |
-| **Symbian S60 5th Edition и Symbian^3/Anna/Belle** с клавиатурой: N97, E6, E7, C6 и другие | ✅ да, кнопками на клавиатуре |
-| Сенсорные без кнопок: 5800, N8, C7, 500, 603, 700, 808 | ⚠️ запустится, но управления пальцем пока нет |
-| Кнопочные **Series 40 / Asha** (6300, C2, C3, 2700, 5310 и т.п.) | ❌ нет — слишком мало памяти, игра весит 5 МБ |
-| Обычные звонилки (105, 106, 110, 3310) | ❌ нет — Java на них не запускается |
+| **Symbian S60 3rd Edition** with keypads: E52, E55, E71, E72, E63, E66, E75, E5, N95, N82, N78, N79, N86, 6120, 6220, 6710, 5730, E51 and others | ✅ yes (`.sisx` or `.jar`) |
+| **Symbian S60 5th Edition and Symbian^3/Anna/Belle** with a keyboard: N97, E6, E7, C6 and others | ✅ yes, with the keyboard |
+| Touch-only phones: 5800, N8, C7, 500, 603, 700, 808 | ⚠️ starts, but there are no touch controls yet |
+| Button **Series 40 / Asha** phones (6300, C2, C3, 2700, 5310, etc.) | ❌ no — not enough memory, the game is 5 MB |
+| Basic phones (105, 106, 110, 3310) | ❌ no — they can't run Java |
 
-Чем мощнее телефон, тем плавнее игра. На слабых моделях поставьте в настройках графику «Минимальная» и разрешение «Авто».
+The more powerful the phone, the smoother the game. On weak models set graphics to "Minimum" and resolution to "Auto" in the settings.
 
-> В репозитории только код движка, конвертеры и сервер. Файлов игры (карт, моделей, звуков, текстур) здесь **нет** — они принадлежат Valve. Для сборки нужна ваша собственная копия Counter-Strike 1.6.
+> This repository contains only the engine code, the converters and the server. The game files (maps, models, sounds, textures) are **not** included — they belong to Valve. To build the game you need your own copy of Counter-Strike 1.6.
 
-## Как собрать (2 шага)
+## How to build (2 steps)
 
-1. **Скачайте проект:** зелёная кнопка **Code → Download ZIP**, затем распакуйте архив.
-2. **Запустите `СОБРАТЬ.bat`** и подождите 2–5 минут.
+1. **Download the project:** green **Code → Download ZIP** button, then unzip it.
+2. **Run `СОБРАТЬ.bat`** ("BUILD") and wait 2–5 minutes.
 
-Сборщик всё сделает сам:
-- найдёт CS 1.6 сам: в Steam, рядом с проектом, а если там нет — поиском по всем дискам (путь запоминается); не нашёл — спросит;
-- скачает всё, чего не хватает: Python-библиотеки, Java, компилятор;
-- переведёт карты, модели и звуки в формат телефона;
-- соберёт игру и создаст ваш личный ключ подписи.
+The builder does everything by itself:
+- finds CS 1.6: in Steam, next to the project, or by searching all drives (the path is remembered); if it can't find it, it asks;
+- downloads everything that is missing: Python libraries, Java, the compiler;
+- converts maps, models and sounds into the phone format;
+- builds the game and creates your personal signing key.
 
-Готовые файлы появятся **на рабочем столе в папке «КС 1.6 НОКИЯ»** — в конце сборщик напишет её полный путь и сам откроет её:
+The finished files appear **on your desktop in the folder "КС 1.6 НОКИЯ"** — at the end the builder prints its full path and opens it:
 
-| Файл | Для чего |
+| File | What it is |
 |---|---|
-| `CS16_E52.sisx` | установщик для Nokia E52 — скопируйте на телефон и откройте |
-| `CS16_E52.jar` | запасной вариант для телефона |
-| `CS16_E52_PC.exe` | версия для ПК — один файл, Java внутри |
+| `CS16_E52.sisx` | installer for Nokia — copy it to the phone and open it |
+| `CS16_E52.jar` | alternative file for the phone |
+| `CS16_E52_PC.exe` | PC version — a single file with Java inside |
 
-**Нужна папка CS 1.6 с подпапками `cstrike` и `valve`.** В Steam это `...\steamapps\common\Half-Life`. Она может лежать где угодно — сборщик найдёт её сам. Можно и указать путь вручную: перетащите папку на `СОБРАТЬ.bat`.
+**You need the CS 1.6 folder with the `cstrike` and `valve` subfolders.** In Steam it is `...\steamapps\common\Half-Life`. It can be anywhere — the builder finds it by itself. You can also give the path manually: drag the folder onto `СОБРАТЬ.bat`.
 
-Если Python на компьютере нет, `СОБРАТЬ.bat` попробует установить его сам. Если не получится, поставьте Python 3 с [python.org](https://www.python.org/downloads/), отметив галочку **«Add python.exe to PATH»**, и запустите `СОБРАТЬ.bat` ещё раз.
+If Python is not installed, `СОБРАТЬ.bat` tries to install it. If that fails, install Python 3 from [python.org](https://www.python.org/downloads/), tick **"Add python.exe to PATH"**, and run `СОБРАТЬ.bat` again.
 
-На Linux и macOS: `python3 build.py /путь/к/cs16` (нужен JDK 11+; `.exe` там не собирается).
+On Linux and macOS: `python3 build.py /path/to/cs16` (JDK 11+ required; the `.exe` is not built there).
 
-## Установка на Nokia E52
+## Installing on a Nokia E52
 
-Скопируйте `CS16_E52.sisx` на телефон (по USB, Bluetooth или через карту памяти) и откройте его. Игре нужно около 6 МБ, карта памяти не обязательна.
+Copy `CS16_E52.sisx` to the phone (USB, Bluetooth or a memory card) and open it. The game needs about 6 MB; a memory card is not required.
 
-## Возможности
+## Features
 
-- Программный 3D-рендер (BSP, z-буфер, освещение), карты **de_dust2**, **de_dust**, **de_train**
-- Настоящие 3D-модели игроков и оружия в руках с анимациями
-- Боты с навигацией по карте и уровнями сложности
-- Режимы: **Оригинал** (бомба, раунды, закупка), **Дезматч**, **Зомби** (три типа зомби: Бегун, Громила, Ходок)
-- Мультиплеер:
-  - по всему миру — без своего сервера (через бесплатные публичные MQTT-серверы) или через свой сервер;
-  - **список игр по всему миру**, как в LAN: имя хоста, сколько игроков (например `3/10`), режим, карта и счёт (`T 2:1 CT`) или номер раунда в Зомби. Можно выбрать любую игру из списка, нажать «Быстрая игра» или создать свою — она сразу появится в списке у всех;
-  - по LAN (Wi-Fi) — без ввода адреса;
-  - пустые места занимают боты, вошедший игрок встаёт вместо бота.
-  - голосовой чат как рация: держите кнопку и говорите (до 6 секунд), отпустили — остальные слышат. На Nokia — зелёная кнопка вызова, на ПК — `K`.
-- **Два языка: английский и русский** (Settings → Language / Настройки → Язык). При первом запуске игра на английском
-- Интерфейс в стиле оригинального меню CS 1.6, графика: Минимальная / Средняя / Высокая / Максимальная
-- **Nokia FR и DLSS** — генерация кадров и динамическое разрешение для слабого телефона
-- На телефоне вертикальный (240×320) и горизонтальный экран, переназначение всех клавиш
-- Версия для ПК: клавиатура и мышь, одиночный `.exe` со встроенной Java
+- Software 3D renderer (BSP, z-buffer, lighting), maps **de_dust2**, **de_dust**, **de_train**
+- Real 3D player and first-person weapon models with animations
+- Bots with map navigation and difficulty levels
+- Modes: **Original** (bomb, rounds, buy menu), **Deathmatch**, **Zombie** (three zombie types: Runner, Brute, Walker)
+- Multiplayer:
+  - worldwide — without your own server (through free public MQTT brokers) or through your own server;
+  - **worldwide game list**, just like LAN: host name, number of players (e.g. `3/10`), mode, map and score (`T 2:1 CT`) or the round number in Zombie. Pick any game from the list, press "Quick game", or create your own — it instantly shows up in everyone's list;
+  - LAN (Wi-Fi) — no address to type;
+  - empty slots are filled with bots; a joining player takes a bot's place;
+  - players with English and Russian games can play together;
+  - walkie-talkie voice chat: hold the key and talk (up to 6 seconds), release — the others hear you. On Nokia it's the green call key, on PC — `K`.
+- **Two languages: English and Russian** (Settings → Language). The game starts in English
+- Menus in the style of the original CS 1.6, graphics: Minimum / Medium / High / Maximum
+- **Nokia FR and DLSS** — frame generation and dynamic resolution for weak phones
+- Portrait (240×320) and landscape screens on the phone, every key can be remapped
+- PC version: keyboard and mouse, a single `.exe` with built-in Java
 
-## Управление на телефоне (по умолчанию)
+## Phone controls (default)
 
-| Клавиша | Действие |
+| Key | Action |
 |---|---|
-| 2 / 8 / 4 / 6 | ходьба |
-| джойстик | обзор |
-| 5 / центр джойстика | огонь |
-| 1 | прыжок |
-| 3 | присесть |
-| 7 | перезарядка |
-| 0 | обезвредить / использовать |
-| 9 | следующее оружие |
-| * | прицел / глушитель |
-| # | закупка |
+| 2 / 8 / 4 / 6 | move |
+| joystick | look |
+| 5 / joystick center | fire |
+| 1 | jump |
+| 3 | crouch |
+| 7 | reload |
+| 0 | defuse / use |
+| 9 | next weapon |
+| * | scope / silencer |
+| # | buy |
 
-Все клавиши можно переназначить: «Настройки» → «Клавиши».
+All keys can be remapped: Settings → Keys.
 
-## Мультиплеер
+## Multiplayer
 
-По умолчанию («Сервер: авто») игра сама находит соперников через бесплатные публичные MQTT-серверы — ничего настраивать не нужно. Свой сервер можно запустить командой `python3 server/cs16_server.py 27016` (подробнее в `server/README_сервер.txt`) и вписать его адрес в игре.
-
-**Голосовой чат.** Держите зелёную кнопку вызова (на ПК — `K`) и говорите, до 6 секунд. Когда отпустите, запись уйдёт остальным игрокам — так кнопочные Nokia умеют передавать голос через Java. Голос сжимается до 4 КБ в секунду и работает во всех видах сетевой игры. При первой записи телефон может спросить разрешение на микрофон — ответьте «Да». Выключить чат и настроить громкость голоса можно в «Настройки → Звук». Там же есть «Проверить микрофон»: игра запишет 3 секунды и проиграет их вам (в самом чате себя не слышно, как и в CS 1.6).
-
-## Структура проекта
-
-| Папка | Что внутри |
-|---|---|
-| `src/core` | движок, общий для телефона и ПК (Java 1.3 / CLDC 1.1) |
-| `src/midp` | обёртка для телефона (MIDP 2.0) |
-| `src/pc` | обёртка для Windows (AWT) |
-| `conv/` | конвертеры файлов CS 1.6 в форматы движка (Python 3) |
-| `tools/` | подпись `.sisx` (чистый Python), упаковка `.exe` |
-| `launcher/` | запускатель `.exe` для Windows (C) и готовый `stub.exe` |
-| `server/` | сервер мультиплеера (Python 3, без библиотек) |
-| `lang/` | словарь перевода `ru_en.py`; после правки запустите `python lang/build_lang.py` |
-| `build.py`, `СОБРАТЬ.bat` | сборка одной командой |
+By default ("Server: auto") the game finds opponents by itself through free public MQTT brokers — nothing to set up. "Find a game worldwide" shows the list of all open games. You
