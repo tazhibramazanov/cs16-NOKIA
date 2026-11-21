@@ -1,0 +1,24 @@
+# что получается при сборке
+_cache/
+build/
+ГОТОВО/
+__pycache__/
+*.class
+# файлы оригинальной игры и всё, что из них делают конвертеры
+res/*
+!res/icon.png
+!res/f1.fnt
+!res/f2.fnt
+cstrike/
+valve/
+# личный ключ подписи .sisx — у каждого свой, создаётся при сборке
+cert/*.pem
+# готовые программы (внутри файлы Valve)
+*.jar
+*.jad
+*.sis
+*.sisx
+*.exe
+!launcher/stub.exe
+*.pdb
+server/server.log
