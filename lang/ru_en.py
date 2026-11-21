@@ -95,5 +95,9 @@ D = {
 'HE граната': 'HE grenade', 'Винтовки': 'Rifles', 'Дробовики': 'Shotguns', 'Нож': 'Knife', 'Патроны осн. (6)': 'Primary ammo (6)', 'Патроны пист. (7)': 'Pistol ammo (7)',
 'Пист.-пулемёты': 'SMGs', 'Пистолеты': 'Pistols', 'Пулемёт': 'Machine gun', 'Флешка': 'Flashbang',
 # ---- new in 1.1
-'Язык': 'Language', 'Упр.': 'Ctrl', 'Клав.': 'Keys',
+'Язык': 'Language',
+# ---- worldwide room list
+'Игры по всему миру': 'Games worldwide', ', раунд ': ', round ', 'Ищем игры по всему миру...': 'Looking for games worldwide...',
+'Пока никто не играет — создайте свою игру': 'Nobody is playing yet — create your own game',
+'> Быстрая игра (подобрать автоматически)': '> Quick game (pick automatically)', 'Эта игра уже закончилась или заполнена': 'This game has ended or is full', 'Упр.': 'Ctrl', 'Клав.': 'Keys',
 }
