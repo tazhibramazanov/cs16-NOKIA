@@ -9,6 +9,7 @@ res/*
 !res/icon.png
 !res/f1.fnt
 !res/f2.fnt
+!res/README.md
 cstrike/
 valve/
 # личный ключ подписи .sisx — у каждого свой, создаётся при сборке
