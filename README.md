@@ -1,4 +1,12 @@
-# CS 1.6 — Nokia E52 Edition
+CS 1.6 Nokia — Version 1.2 (BIGFPS) Update Preview
+Here is what’s coming in the next major update (v1.2 BIGFPS):
+1. Symbian C++ Port (30–40 FPS): The game is moving to native Symbian C++, boosting performance to a stable 30–40 FPS.
+2. 7 New Maps: Seven brand-new maps will be added to the rotation.
+3. 2 New Game Modes: Play in two new modes — Terminator and Hostage Rescue.
+4. Proper Mod Support (mods folder): Mods will no longer need to be built as separate standalone apps. You will be able to load custom mods directly from the mods folder.
+5. New Languages: Added support for French, German, Japanese, Vietnamese, and more.
+6. License Protection: A license file will be introduced so unauthorized standalone builds cannot be created without permission, while keeping modding open through the mods folder.
+
 
 A custom engine that runs **Counter-Strike 1.6** on button **Nokia Symbian smartphones** (built and tested on a Nokia E52) and on Windows PCs.
 
