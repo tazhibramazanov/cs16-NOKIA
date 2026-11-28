@@ -1,0 +1,64 @@
+CS 1.6 — Nokia E52 Edition (v1.2) — CUSTOM RESTRICTED LICENSE
+============================================================
+
+Copyright (c) 2026. All rights reserved.
+
+Redistribution and use of this project are governed by this license.
+By downloading, building, installing or using the game you agree to it.
+
+1. ALLOWED — MODS ONLY
+----------------------
+You ARE allowed to create, use and publish modifications ("mods") of this
+game: maps, models, sounds, textures, skins, translations, balance/config
+changes and code patches, provided that:
+
+  a) your work is clearly a MOD of CS 1.6 — Nokia E52 Edition and credits
+     the original project and author;
+  b) you include this LICENSE with any mod you publish;
+  c) your mod contains ONLY your own changed/added files. It must NOT
+     bundle, mirror or re-upload the original game binaries listed below;
+  d) you do not claim the original game or engine as your own work.
+
+2. PROHIBITED — NO COPIES, NO PUBLIC UPLOADS
+--------------------------------------------
+You are NOT allowed to copy, mirror, re-upload, host, sell, distribute or
+make publicly available the original, unmodified game or its binaries,
+including but not limited to:
+
+  - CS16_E52.sisx   (Symbian installer)
+  - CS16_E52.jar    (Java MIDlet)
+  - CS16_E52_PC.exe (PC executable)
+  - the original source tree as a ready-to-run game distribution
+
+Publishing these files on websites, GitHub/GitLab releases, file hosts,
+forums, cloud drives, torrents, social networks or any other open/public
+access is strictly forbidden without the author's explicit written permission.
+
+Linking to the official distribution page is allowed; copying the files is not.
+
+3. SOURCE CODE
+--------------
+The source code in this repository is provided for building the game and
+creating mods. You may patch it for your own mod under section 1. You may
+not republish the whole unmodified repository as a game distribution.
+
+4. NO WARRANTY
+--------------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. THE AUTHOR IS NOT LIABLE FOR ANY DAMAGES OR LOSSES ARISING FROM
+ITS USE.
+
+5. VIOLATIONS
+-------------
+Any distribution that violates this license is unauthorized. The author
+reserves the right to request takedown of violating copies.
+
+---
+
+КРАТКО ПО-РУССКИ
+----------------
+МОДЫ делать и публиковать МОЖНО (с указанием авторства и с этим LICENSE).
+КОПИРОВАТЬ и выкладывать в открытый доступ саму игру, её .sisx/.jar/.exe
+или готовую сборку — НЕЛЬЗЯ без письменного разрешения автора.
+
+Разрешены только ссылки на официальную страницу загрузки, но не сами файлы.
