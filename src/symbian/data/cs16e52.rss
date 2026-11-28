@@ -1,0 +1,49 @@
+/*
+ * cs16e52.rss — ресурсы приложения (S60 3rd Edition FP2).
+ * Игровое меню рисуется движком, поэтому системное меню содержит только «Выход».
+ */
+
+#include <eikon.rh>
+#include <avkon.hrh>
+#include <avkon.rh>
+#include <avkon.rsg>
+#include "Cs16.hrh"
+
+RESOURCE RSS_SIGNATURE
+    {
+    }
+
+RESOURCE TBUF
+    {
+    buf = "CS 1.6 E52";
+    }
+
+RESOURCE EIK_APP_INFO
+    {
+    menubar = R_CS16_MENUBAR;
+    cba = R_AVKON_SOFTKEYS_OPTIONS_EXIT;
+    }
+
+RESOURCE MENU_BAR R_CS16_MENUBAR
+    {
+    titles =
+        {
+        MENU_TITLE
+            {
+            menu_pane = R_CS16_MENU_MAIN;
+            txt = "Options";
+            }
+        };
+    }
+
+RESOURCE MENU_PANE R_CS16_MENU_MAIN
+    {
+    items =
+        {
+        MENU_ITEM
+            {
+            command = EAknSoftkeyExit;
+            txt = "Exit";
+            }
+        };
+    }

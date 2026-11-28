@@ -1,0 +1,15 @@
+/*
+ * cs16e52_reg.rss — регистрация EXE в App Arc S60 3rd Edition FP2.
+ * Устанавливается в !:\private\10003a3f\import\apps\cs16e52_reg.rsc.
+ */
+
+#include <appinfo.rh>
+
+UID2 0x10003A3F
+UID3 0x2003C516
+
+RESOURCE APP_REGISTRATION_INFO
+    {
+    app_file = "cs16e52";
+    embeddability = KAppNotEmbeddable;
+    }

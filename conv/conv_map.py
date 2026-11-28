@@ -43,11 +43,11 @@ def miptex_rgb(d, o):
     pal = np.frombuffer(d, np.uint8, 768, po).reshape(256, 3)
     return w, h, pix, pal
 
-def pow2(n, cap=128):
+def pow2(n, cap=64):
     p = 1
     while p * 2 <= n: p *= 2
     if n - p > p * 2 - n: p *= 2  # nearest
-    return max(8, min(cap, p))
+    return max(4, min(cap, p))
 
 def parse_ents(s):
     out = []

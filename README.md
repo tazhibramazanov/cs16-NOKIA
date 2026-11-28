@@ -31,7 +31,7 @@ The more powerful the phone, the smoother the game. On weak models set graphics 
 ## How to build (2 steps)
 
 1. **Download the project:** green **Code → Download ZIP** button, then unzip it.
-2. **Run `СОБРАТЬ.bat`** ("BUILD") and wait 2–5 minutes.
+2. **Run `start.bat`** ("BUILD") and wait 2–5 minutes.
 
 The builder does everything by itself:
 - finds CS 1.6: in Steam, next to the project, or by searching all drives (the path is remembered); if it can't find it, it asks;
@@ -47,9 +47,9 @@ The finished files appear **on your desktop in the folder "КС 1.6 НОКИЯ"*
 | `CS16_E52.jar` | alternative file for the phone |
 | `CS16_E52_PC.exe` | PC version — a single file with Java inside |
 
-**You need the CS 1.6 folder with the `cstrike` and `valve` subfolders.** In Steam it is `...\steamapps\common\Half-Life`. It can be anywhere — the builder finds it by itself. You can also give the path manually: drag the folder onto `СОБРАТЬ.bat`.
+**You need the CS 1.6 folder with the `cstrike` and `valve` subfolders.** In Steam it is `...\steamapps\common\Half-Life`. It can be anywhere — the builder finds it by itself. You can also give the path manually: drag the folder onto `start.bat`.
 
-If Python is not installed, `СОБРАТЬ.bat` tries to install it. If that fails, install Python 3 from [python.org](https://www.python.org/downloads/), tick **"Add python.exe to PATH"**, and run `СОБРАТЬ.bat` again.
+If Python is not installed, `start.bat` tries to install it. If that fails, install Python 3 from [python.org](https://www.python.org/downloads/), tick **"Add python.exe to PATH"**, and run `start.bat` again.
 
 On Linux and macOS: `python3 build.py /path/to/cs16` (JDK 11+ required; the `.exe` is not built there).
 

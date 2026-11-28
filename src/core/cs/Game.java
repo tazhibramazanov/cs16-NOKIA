@@ -11,7 +11,7 @@ public final class Game {
             A_FIRE = 256, A_JUMP = 512, A_DUCK = 1024, A_RELOAD = 2048, A_USE = 4096, A_NEXTW = 8192, A_ALT = 16384, A_BUY = 32768,
             A_MENU = 65536, A_SCORE = 131072, A_UP = 262144, A_DOWN = 524288, A_SELECT = 1048576;
 
-    public static final String[] MAPS = {"de_dust2", "de_dust", "de_train"};
+    public static final String[] MAPS = {"de_dust2", "de_dust", "de_train", "de_inferno", "de_nuke", "de_aztec", "de_cbble", "cs_italy", "cs_office", "cs_assault", "cs_mansion"};
     public static final String[] TNAMES = {"Террористы", "Спецназ"};
     static final String[] BOTNAMES = {"Albert", "Arnold", "Bill", "Calvin", "Christian", "Colin", "Cory", "Dave", "Eric", "Ernie", "Gary", "Hal",
             "Harvey", "Jim", "Joe", "Keith", "Kevin", "Lyle", "Moe", "Morris", "Neil", "Pete", "Rock", "Sam", "Scott", "Steve", "Ted", "Tom", "Wally", "Yahn"};

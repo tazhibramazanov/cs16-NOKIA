@@ -14,12 +14,13 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(ROOT, '_cache')
 LIB = os.path.join(CACHE, 'lib')
 BUILD = os.path.join(ROOT, 'build')
-OUT_NAME = 'КС 1.6 НОКИЯ'
+OUT_NAME = 'ks16nokia'
 RES = os.path.join(ROOT, 'res')
 WIN = os.name == 'nt'
 EXE = '.exe' if WIN else ''
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 MAPS = ['de_dust2', 'de_dust', 'de_train']
+REAL_SDK_ROOT = r'C:\S60\devices\S60_3rd_FP2_SDK_v1.1'
 
 MAVENS = ['https://repo1.maven.org/maven2/',                        # Maven Central and its mirrors, tried in order
           'https://maven-central.storage-download.googleapis.com/maven2/',
@@ -470,6 +471,53 @@ def build_exe(jdk):
     return True
 
 
+
+def export_github():
+    dest = os.path.join(desktop(), 'github')
+    if os.path.exists(dest):
+        shutil.rmtree(dest)
+    os.makedirs(dest, exist_ok=True)
+    exclude_dirs = {'build', '_cache', '__pycache__', '.git', '.vscode', '.idea', 'node_modules'}
+    exclude_ext = {'.sisx', '.jar', '.exe', '.apk', '.o', '.obj', '.a', '.lib', '.class', '.pyd'}
+    for name in os.listdir(ROOT):
+        if name in exclude_dirs:
+            continue
+        srcp = os.path.join(ROOT, name)
+        dstp = os.path.join(dest, name)
+        if os.path.isdir(srcp):
+            def ignore_func(d, files):
+                out = []
+                for f in files:
+                    fp = os.path.join(d, f)
+                    if os.path.isdir(fp) and f in exclude_dirs:
+                        out.append(f)
+                    elif os.path.isfile(fp):
+                        _, ext = os.path.splitext(f.lower())
+                        if ext in exclude_ext:
+                            out.append(f)
+                        # skip common temp files
+                        if f.endswith('.bak') or f.startswith('~$'):
+                            out.append(f)
+                return out
+            try:
+                shutil.copytree(srcp, dstp, ignore=ignore_func)
+            except Exception as e:
+                say('skip ' + name + ': ' + str(e))
+        else:
+            _, ext = os.path.splitext(name.lower())
+            if ext in exclude_ext or name.endswith('.bak'):
+                continue
+            try:
+                shutil.copy2(srcp, dstp)
+            except Exception as e:
+                pass
+    say('Exported clean repo to: ' + dest)
+    if WIN:
+        try:
+            os.startfile(dest)
+        except OSError:
+            pass
+
 def main():
     say('CS 1.6 — Nokia E52 Edition %s: сборка' % VERSION)
     arg = sys.argv[1] if len(sys.argv) > 1 else None
@@ -483,33 +531,87 @@ def main():
     build_phone(jdk)
     check_jar_sounds(os.path.join(BUILD, 'CS16_E52.jar'))
     build_sis()
+    # Нативный пакет должен называться CS16_E52.sisx. Сохраняем Java-установщик
+    # под отдельным именем, чтобы при наличии SDK его не перезаписал нативный.
+    java_sis = os.path.join(BUILD, 'CS16_E52.sisx')
+    if os.path.isfile(java_sis):
+        shutil.copy(java_sis, os.path.join(BUILD, 'CS16_E52_JAVA.sisx'))
     build_pc(jdk)
     check_jar_sounds(os.path.join(BUILD, 'CS16_PC.jar'))
     exe = build_exe(jdk)
-    step(7, 'Готово')
+    # Нативный Symbian C++ пакет: только если установлен S60 3rd FP2 SDK.
+    # Native Symbian C++ package has priority over Java SISX
+    native_sisx = None
+    try:
+        say()
+        say('  Building native Symbian C++ package (if SDK available)...')
+        native_dir = os.path.join(BUILD, 'symbian')
+        symbian_build_cmd = [sys.executable, os.path.join(ROOT, 'src', 'symbian', 'tools', 'build_symbian.py'),
+                             '--output', native_dir]
+        if os.path.isdir(REAL_SDK_ROOT):
+            symbian_build_cmd.extend(['--sdk', REAL_SDK_ROOT])
+        run(symbian_build_cmd, env=dict(os.environ, PYTHONIOENCODING='utf-8'))
+        candidate = os.path.join(native_dir, 'CS16_E52.sisx')
+        if os.path.isfile(candidate):
+            native_sisx = candidate
+            shutil.copy(native_sisx, os.path.join(BUILD, 'CS16_E52.sisx'))
+            say('  Using native C++ CS16_E52.sisx: %s' % native_sisx)
+    except (Exception, SystemExit) as e:
+        say('  Native C++ build failed: %s' % e)
+    # Fallback: prefer native SISX if current is missing or looks like Java (>6MB)
+    try:
+        cur = os.path.join(BUILD, 'CS16_E52.sisx')
+        need = (not os.path.isfile(cur)) or (os.path.getsize(cur) > 6000000)
+        if need:
+            for fb in [os.path.join(BUILD,'symbian','CS16_E52.sisx'), r'C:\CS16_NOKIA_SRC\build\symbian\CS16_E52.sisx', r'C:\Users\pc\Desktop\CS16_NOKIA\CS16_E52.sisx']:
+                if os.path.isfile(fb) and os.path.getsize(fb) < 7000000:
+                    shutil.copy(fb, cur)
+                    say('  Fallback: using native CS16_E52.sisx from %s' % fb)
+                    break
+    except Exception as e:
+        say('  Fallback SISX check failed: %s' % e)
+    step(7, 'Done')
     OUT = os.path.join(desktop(), OUT_NAME)
+    if os.path.exists(OUT):
+        shutil.rmtree(OUT)
     os.makedirs(OUT, exist_ok=True)
-    files = ['CS16_E52.sisx', 'CS16_E52.jar', 'CS16_E52.jad'] + (['CS16_E52_PC.exe'] if exe else ['CS16_PC.jar'])
-    for f in files: shutil.copy(os.path.join(BUILD, f), OUT)
+    if os.path.isfile(os.path.join(BUILD, 'CS16_E52.sisx')):
+        shutil.copy(os.path.join(BUILD, 'CS16_E52.sisx'), os.path.join(OUT, 'CS16_E52.sisx'))
+    if os.path.isfile(os.path.join(BUILD, 'CS16_E52.jar')):
+        shutil.copy(os.path.join(BUILD, 'CS16_E52.jar'), os.path.join(OUT, 'CS16_E52.jar'))
+    if exe and os.path.isfile(os.path.join(BUILD, 'CS16_E52_PC.exe')):
+        shutil.copy(os.path.join(BUILD, 'CS16_E52_PC.exe'), os.path.join(OUT, 'CS16_E52_PC.exe'))
+    elif os.path.isfile(os.path.join(BUILD, 'CS16_PC.jar')):
+        shutil.copy(os.path.join(BUILD, 'CS16_PC.jar'), os.path.join(OUT, 'CS16_PC.jar'))
+    os.makedirs(os.path.join(OUT, 'mods'), exist_ok=True)
     say()
     say('  ' + '=' * 60)
-    say('  ВСЁ ПОЛУЧИЛОСЬ! Готовые файлы лежат в папке:')
-    say()
-    say('      ' + OUT)
-    say()
-    say('  (на рабочем столе, папка «%s»)' % OUT_NAME if os.path.dirname(OUT) != ROOT else '  (в папке проекта, папка «%s»)' % OUT_NAME)
+    say('  Build complete! Release folder: ' + OUT)
     say('  ' + '=' * 60)
-    for f in files: say('    %-18s %6.1f МБ' % (f, os.path.getsize(os.path.join(OUT, f)) / 1048576))
-    say()
-    say('  На телефон: скопируйте CS16_E52.sisx на Nokia E52 и откройте его.')
-    if exe: say('  На ПК: запустите CS16_E52_PC.exe.')
+    for name in sorted(os.listdir(OUT)):
+        pth = os.path.join(OUT, name)
+        if os.path.isfile(pth):
+            say('    %-18s %6.1f MB' % (name, os.path.getsize(pth) / 1048576))
+        else:
+            say('    %-18s (dir)' % name)
     say()
     if WIN:
-        try: os.startfile(OUT)
-        except OSError: pass
-    if WIN: input('Нажмите Enter, чтобы закрыть...')
-
+        try:
+            os.startfile(OUT)
+        except OSError:
+            pass
+    if WIN:
+        try:
+            input('Press Enter to exit...')
+        except EOFError:
+            pass
 
 if __name__ == '__main__':
-    try: main()
-    except KeyboardInterrupt: fail('остановлено')
+    try:
+        if '--export-github' in sys.argv:
+            export_github()
+        else:
+            main()
+    except KeyboardInterrupt:
+        fail('Interrupted')
+

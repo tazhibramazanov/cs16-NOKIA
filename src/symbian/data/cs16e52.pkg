@@ -1,0 +1,15 @@
+;
+; cs16e52.pkg — установщик нативного CS 1.6 E52 (S60 3rd FP2, GCCE).
+; Обрабатывается src/symbian/tools/build_symbian.py: он подставляет
+; абсолютный путь к папке данных, если она указана через --assets-dir.
+;
+&EN,RU
+#{"CS 1.6 E52","CS 1.6 E52"},(0x2003C516),1,1,0,TYPE=SA
+
+; S60 3rd Edition Feature Pack 2 (Series60ProductID)
+(0x101F7961),0,0,0,{"Series60ProductID"}
+
+"$(EPOCROOT)Epoc32\release\gcce\urel\cs16e52.exe" - "!:\sys\bin\cs16e52.exe"
+"$(EPOCROOT)Epoc32\data\z\resource\apps\cs16e52.rsc" - "!:\resource\apps\cs16e52.rsc"
+"$(EPOCROOT)Epoc32\data\z\private\10003a3f\apps\cs16e52_reg.rsc" - "!:\private\10003a3f\import\apps\cs16e52_reg.rsc"
+"..\..\..\build\symbian\data\cs16\-" - "!:\data\cs16",RECURSIVE

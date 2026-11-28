@@ -1,0 +1,11 @@
+;
+; bld.inf — проект CS 1.6 E52 (нативный Symbian C++ порт).
+; Сборка: bldmake bldfiles && abld build gcce urel
+;
+PRJ_PLATFORMS
+GCCE
+
+PRJ_EXPORTS
+
+PRJ_MMPFILES
+cs16e52.mmp

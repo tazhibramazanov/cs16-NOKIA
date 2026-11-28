@@ -1,0 +1,62 @@
+/*
+ * cs16e52.mmp вЂ” РЅР°С‚РёРІРЅС‹Р№ РґРІРёР¶РѕРє CS 1.6 РґР»СЏ Nokia E52.
+ * S60 3rd Edition Feature Pack 2, GCCE, ARM11 (ARM1136J-S).
+ */
+
+TARGET          cs16e52.exe
+TARGETTYPE      exe
+UID             0x2003C516
+
+/* РўРѕР»СЊРєРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ capabilities: РїР°РєРµС‚ РјРѕР¶РЅРѕ РїРѕРґРїРёСЃР°С‚СЊ СЃРІРѕРёРј РєР»СЋС‡РѕРј. */
+CAPABILITY      LocalServices NetworkServices ReadUserData WriteUserData UserEnvironment
+
+SYSTEMINCLUDE   \epoc32\include
+SYSTEMINCLUDE   \epoc32\include\avkon
+SYSTEMINCLUDE   \epoc32\include\eikcore
+SYSTEMINCLUDE   \epoc32\include\apparc
+SYSTEMINCLUDE   \epoc32\include\stdapis
+USERINCLUDE     ..\inc
+
+SOURCEPATH      ..\src
+SOURCE          Engine.cpp
+SOURCE          Assets.cpp
+SOURCE          Renderer.cpp
+SOURCE          Game.cpp
+SOURCE          GameUi.cpp
+SOURCE          Audio.cpp
+SOURCE          Network.cpp
+SOURCE          App.cpp
+
+START RESOURCE  ..\data\cs16e52.rss
+HEADER
+TARGET          cs16e52.rsc
+TARGETPATH      \resource\apps
+END
+
+START RESOURCE  ..\data\cs16e52_reg.rss
+TARGET          cs16e52_reg.rsc
+TARGETPATH      \private\10003a3f\apps
+END
+
+LIBRARY         euser.lib
+LIBRARY         apparc.lib
+LIBRARY         cone.lib
+LIBRARY         eikcore.lib
+LIBRARY         avkon.lib
+LIBRARY         eikctl.lib
+LIBRARY         fbscli.lib
+LIBRARY         ws32.lib
+LIBRARY         gdi.lib
+LIBRARY         mediaclientaudiostream.lib
+LIBRARY         esock.lib
+LIBRARY         esocksvr.lib
+LIBRARY         efsrv.lib
+LIBRARY         insock.lib
+LIBRARY         mediaclientaudioinputstream.lib
+LIBRARY         estlib.lib
+LIBRARY         bafl.lib
+LIBRARY         charconv.lib
+LIBRARY         ecom.lib
+
+/* RTTI РІС‹РєР»СЋС‡РµРЅ; C++-РёСЃРєР»СЋС‡РµРЅРёСЏ РЅСѓР¶РЅС‹ РјР°РєСЂРѕСЃР°Рј TRAP РёР· SDK (Р·Р°РіСЂСѓР·РєР° С„Р°Р№Р»РѕРІ/Р°СѓРґРёРѕ). */
+OPTION GCCE     -O3 -mcpu=arm1136j-s -fno-rtti

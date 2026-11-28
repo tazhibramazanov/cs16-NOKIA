@@ -1,0 +1,27 @@
+#ifndef CS16_HRH
+#define CS16_HRH
+
+/*
+ * Cs16.hrh — идентификаторы команд и ресурсов нативного CS 1.6 E52.
+ * Диапазон 0x2500..0x27FF не пересекается со стандартными Avkon/Eikon.
+ */
+
+enum TCs16Command
+    {
+    ECs16CmdResume = 0x2500,
+    ECs16CmdNewGame,
+    ECs16CmdSettings,
+    ECs16CmdLanguage,
+    ECs16CmdAbout,
+    ECs16CmdExit
+    };
+
+enum TCs16ResourceId
+    {
+    R_CS16_MENUBAR = 0x2600,
+    R_CS16_MENU_MAIN,
+    R_CS16_MENU_OPTIONS,
+    R_CS16_CBA
+    };
+
+#endif /* CS16_HRH */
