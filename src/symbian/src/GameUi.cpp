@@ -163,6 +163,8 @@ struct TUiState
     TText iLoadMessage[128];
     TInt iMpMode;
     TInt iMpMap;
+    TInt iMpTeam;
+    TInt iMpMoney;
     TInt iMode;
     TInt iCreateMap;
     TInt iCreateTeam;
@@ -685,6 +687,8 @@ void EnsureUi(CGame& aGame)
     CopyText(gUi.iNick, 32, nick);
     gUi.iNickLength = 6;
     gUi.iMpMode = 0;
+    gUi.iMpTeam = 3;
+    gUi.iMpMoney = aGame.iStartMoney;
     gUi.iMpMap = Clamp(aGame.iMapIndex, 0, 10);
     gUi.iCreateMap = aGame.iMapIndex;
     gUi.iCreateTeam = aGame.iTeamChoice;
@@ -754,6 +758,15 @@ void BuildMenuItems(CGame& aGame)
         AppendLocal(line, 51, language); AddMenuItem(line); line.Zero();
         AppendLocal(line, 60, language); AddMenuItem(line); line.Zero();
         AppendLocal(line, 61, language); AddMenuItem(line); line.Zero();
+        {
+        TBuf<48> teamLine;
+        AppendAscii(teamLine, "Team: ");
+        AppendAscii(teamLine, gUi.iMpTeam == 1 ? "T" : gUi.iMpTeam == 2 ? "CT" : "AUTO");
+        AddMenuItem(teamLine); line.Zero();
+        TBuf<48> moneyLine;
+        AppendAscii(moneyLine, "Money/round: $"); moneyLine.AppendNum(gUi.iMpMoney);
+        AddMenuItem(moneyLine); line.Zero();
+        }
         AppendLocal(line, 375, language); AddMenuItem(line);
         break;
 
@@ -1929,9 +1942,9 @@ void ResetCreate(CGame& aGame)
 void ApplyCreate(CGame& aGame)
     {
     CommitSettings(aGame);
+    aGame.iStartMoney = gUi.iCreateMoney;
     const TInt map = Clamp(gUi.iCreateMap, 0, 10);
-    if (map == 7 || map == 8 || map == 9 || map == 10) aGame.iMode = 4;
-    else aGame.iMode = 0;
+    if (aGame.iMode == 0 && (map == 7 || map == 8 || map == 9 || map == 10)) aGame.iMode = 4;
     const TInt team = gUi.iCreateTeam == 3 ? 1 + (aGame.iRandom.Next() & 1) : gUi.iCreateTeam;
     aGame.StartMatch(map, team);
     }
@@ -2260,6 +2273,8 @@ TBool CGame::ChangeOption(TInt aDirection)
     case EMenuMultiplayer:
         if (iMenuSelection == 0) { gUi.iMpMode = (gUi.iMpMode + 5 + aDirection) % 5; return ETrue; }
         if (iMenuSelection == 1) { gUi.iMpMap = (gUi.iMpMap + 11 + aDirection) % 11; return ETrue; }
+        if (iMenuSelection == 9) { gUi.iMpTeam = ((gUi.iMpTeam - 1 + 3 + aDirection) % 3) + 1; return ETrue; }
+        if (iMenuSelection == 10) { gUi.iMpMoney += aDirection * (gUi.iMpMoney >= 4000 ? 1000 : 400); if (gUi.iMpMoney > 16000) gUi.iMpMoney = 800; if (gUi.iMpMoney < 800) gUi.iMpMoney = 16000; return ETrue; }
         return EFalse;
     case EMenuCreate:
         switch (iMenuSelection)
@@ -2510,10 +2525,10 @@ void CGame::MenuKey(TInt aAction)
             ResetCreate(*this);
             iMode = gUi.iMpMode;
             gUi.iCreateMap = gUi.iMpMap;
-            if (gUi.iMpMap == 7 || gUi.iMpMap == 8 || gUi.iMpMap == 9 || gUi.iMpMap == 10) iMode = 4;
-            StartMatch(gUi.iMpMap, iMode == 2 ? 2 : 1 + (iRandom.Next() & 1));
+            iStartMoney = gUi.iMpMoney;
+            StartMatch(gUi.iMpMap, iMode == 2 ? 2 : (gUi.iMpTeam == 3 ? 1 + (iRandom.Next() & 1) : gUi.iMpTeam));
             }
-        else if (selection == 9) { iMenu = EMenuMain; iMenuSelection = 1; }
+        else if (selection == 11) { iMenu = EMenuMain; iMenuSelection = 1; }
         break;
     case EMenuLan:
         if (gUi.iLanCount > 0 && selection < gUi.iLanCount)
@@ -3436,6 +3451,7 @@ void DrawScoreboardTable(CGame& aGame)
             line.AppendNum(player.iKills);
             line.Append((TChar)'/');
             line.AppendNum(player.iDeaths);
+            AppendAscii(line, "  $"); line.AppendNum(player.iMoney);
             renderer.DrawText(x + 12, rowY, font, line, Rgb565(player.iAlive ? teamColor : 0x808080u));
             rowY += 11;
             if (rowY > y + height - 12) break;
@@ -3855,16 +3871,15 @@ void CGame::DrawPlayers(const TPlayer& aViewer)
         }
     if (iMode == 3 && iTermCircleActive)
         {
-        DrawBlob(iRenderer, iTermCircleX, iTermCircleY, iTermCircleZ + 6.0f, 2.5f, 0x00FFFFu, 200);
+        DrawStaticModel(*this, "pl_ct", iTermCircleX, iTermCircleY, iTermCircleZ + 1.0f, iTime * 40.0f);
         }
     if (iMode == 4)
         {
-        for (TInt h = 0; h < 4; h++)
+        for (TInt h = 0; h < 4 && h < KMaxHostages; h++)
             {
             if (iHostageAlive[h] && !iHostageRescued[h])
-                DrawBlob(iRenderer, iHostageX[h], iHostageY[h], iHostageZ[h] + 8.0f, 2.0f, 0xFFFF00u, 220);
+                DrawStaticModel(*this, "pl_t", iHostageX[h], iHostageY[h], iHostageZ[h] + 1.0f, 0.0f);
             }
-        DrawBlob(iRenderer, iRescueZoneX, iRescueZoneY, iRescueZoneZ + 6.0f, 3.0f, 0x00FF00u, 180);
         }
     for (TInt i = 0; i < KMaxDrops; i++)
         {

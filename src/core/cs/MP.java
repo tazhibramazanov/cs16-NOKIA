@@ -5,7 +5,7 @@ package cs;
  * and sends snapshots; the others move their own player locally, send it to the host and mirror the rest.
  */
 public final class MP {
-    public static final String[] MODEN = {"Оригинал", "Дезматч", "Зомби"};
+    public static final String[] MODEN = {"Bomb", "Deathmatch", "Zombie", "Terminator", "Hostage Rescue"};
     public static final int PORT = 27016;
     final Game g;
     public final Net net;

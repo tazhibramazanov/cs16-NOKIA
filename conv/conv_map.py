@@ -13,6 +13,10 @@ WADS = {
     'halflife.wad': ROOT + '/valve/halflife.wad', 'decals.wad': ROOT + '/valve/decals.wad',
     'liquids.wad': ROOT + '/valve/liquids.wad', 'cs_dust.wad': ROOT + '/cstrike/cs_dust.wad',
     'cstrike.wad': ROOT + '/cstrike/cstrike.wad', 'cs_bdog.wad': ROOT + '/cstrike/cs_bdog.wad',
+    'itsitaly.wad': ROOT + '/cstrike/itsitaly.wad', 'cs_cbble.wad': ROOT + '/cstrike/cs_cbble.wad',
+    'cs_assault.wad': ROOT + '/cstrike/cs_assault.wad', 'cs_office.wad': ROOT + '/cstrike/cs_office.wad',
+    'cs_747.wad': ROOT + '/cstrike/cs_747.wad', 'cs_havana.wad': ROOT + '/cstrike/cs_havana.wad',
+    'de_aztec.wad': ROOT + '/cstrike/de_aztec.wad', 'prodigy.wad': ROOT + '/cstrike/prodigy.wad',
 }
 SKYDIR = ROOT + '/cstrike/gfx/env/'
 NODRAW = {'aaatrigger', 'clip', 'origin', 'null', 'bevel', 'hint', 'skip', 'noclip', 'trigger'}

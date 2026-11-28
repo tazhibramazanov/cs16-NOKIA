@@ -86,9 +86,16 @@ public final class Game {
     void resetCreate() { cMap = 0; cTeam = 3; cBots = 9; cRoundTime = 135; cBuyTime = 45; cFreeze = 3; cMoney = 800; cFF = false; maxRounds = 15; difficulty = 1; }
     float buyTimeS = 45, freezeS = 3; int startMoney = 800; boolean friendlyFire;
     // ---- multiplayer and game modes
-    public MP mp; public int mode;   // 0 original (bomb), 1 deathmatch, 2 zombie
+    public MP mp; public int mode;   // 0 bomb, 1 deathmatch, 2 zombie, 3 terminator, 4 hostage rescue
+    // ---- Terminator / Hostage Rescue state
+    boolean termCircleActive; float termX, termY, termZ;
+    int terminatorIdx = -1, termClass; float disguiseTimer, disguiseCooldown; boolean isDisguised;
+    static final int MAXH = 4;
+    float[] hX = new float[MAXH], hY = new float[MAXH], hZ = new float[MAXH];
+    boolean[] hAlive = new boolean[MAXH], hRescued = new boolean[MAXH]; int[] hFollow = new int[MAXH];
+    float rescueX, rescueY, rescueZ;
     public String mpServer = "", mpName = "", mpErr;
-    int mpMode, mpMap;
+    int mpMode, mpMap, mpTeam = 3, mpMoney = 800;
     static final int M_MP = 16, M_SEARCH = 17, M_LAN = 18, M_LANG = 19, M_WORLD = 20;
     LanFinder lanFinder; LanFinder.Game[] lanList = new LanFinder.Game[0];
     MqttLink world; MqttLink.Room[] worldList = new MqttLink.Room[0]; int worldK;   // "Найти игру по всему миру": every room in the world
@@ -98,7 +105,7 @@ public final class Game {
 
     /** a game in a list: "> host \t players \t mode, map, score" (drawn on two lines) */
     String roomLine(MqttLink.Room x) {
-        String d = MP.MODEN[x.mode] + ", " + MAPS[x.map];
+        String d = MP.MODEN[Math.min(x.mode, MP.MODEN.length - 1)] + ", " + MAPS[Math.min(x.map, MAPS.length - 1)] + ", $" + cMoney + "/rnd";
         if (x.score && x.mode == 0 && x.round > 0) d += ", T " + x.t + ":" + x.ct + " CT";
         if (x.score && x.mode == 2 && x.round > 0) d += ", раунд " + x.round;
         return "> " + x.name + "\t" + x.players + "/10\t" + d;
@@ -193,6 +200,118 @@ public final class Game {
     }
 
     // ---- modes
+    void modesNewRound() {
+        terminatorIdx = -1; termClass = 0; termCircleActive = (mode == 3);
+        disguiseTimer = 0; disguiseCooldown = 0; isDisguised = false;
+        for (int h = 0; h < MAXH; h++) { hAlive[h] = false; hRescued[h] = false; hFollow[h] = -1; }
+        if (mode == 3) {
+            termX = 0; termY = 0; termZ = 0;
+            int bestArea = -1; float bestD = -1;
+            if (nav != null && nav.n > 0) {
+                for (int a = 0; a < nav.n; a++) {
+                    float x = nav.cx[a], y = nav.cy[a], z = nav.cz[a];
+                    if (z < -9000 || z > 9000) continue;
+                    if (m != null) { m.trace(0, x, y, z + 30, x, y, z - 50); if (m.rStartSolid) continue; }
+                    float nearest = 1e12f;
+                    for (int j = 0; j < pl.length; j++) {
+                        if (!pl[j].alive) continue;
+                        float dx = x - pl[j].ox, dy = y - pl[j].oy, d = dx * dx + dy * dy;
+                        if (d < nearest) nearest = d;
+                    }
+                    if (nearest > bestD) { bestD = nearest; bestArea = a; }
+                }
+            }
+            if (bestArea >= 0) { termX = nav.cx[bestArea]; termY = nav.cy[bestArea]; termZ = nav.cz[bestArea]; }
+            else if (spawnCT != null && spawnCT.length >= 4) { termX = spawnCT[0]; termY = spawnCT[1]; termZ = spawnCT[2]; }
+            termZ = groundZ(termX, termY, termZ + 100);
+            centerAll("Exoskeleton suit appeared! First to reach it becomes the Terminator!", 4, 0xFF4040);
+        }
+        if (mode == 4 && spawnT != null && spawnCT != null && spawnT.length >= 4 && spawnCT.length >= 4) {
+            int nT = spawnT.length / 4;
+            for (int h = 0; h < MAXH; h++) {
+                int k = (h * 3 + 1) % nT;
+                hX[h] = spawnT[k*4]; hY[h] = spawnT[k*4+1]; hZ[h] = spawnT[k*4+2] + 1;
+                hAlive[h] = true; hRescued[h] = false; hFollow[h] = -1;
+            }
+            rescueX = spawnCT[0]; rescueY = spawnCT[1]; rescueZ = spawnCT[2] + 1;
+            centerAll("Rescue the hostages and bring them to the CT zone!", 4, 0x60FF60);
+        }
+    }
+
+    void becomeTerminator(int i) {
+        termCircleActive = false; terminatorIdx = i;
+        int roll = Math.abs(rnd.nextInt() & 0x7FFFFFFF) % 100;
+        termClass = roll < 70 ? 1 : (roll < 90 ? 2 : 3);
+        Player p = pl[i];
+        p.team = 1;
+        for (int j = 0; j < pl.length; j++) if (j != i) pl[j].team = 2;
+        p.health = termClass == 1 ? 1500 : (termClass == 2 ? 2500 : 3500);
+        p.armor = 200; p.helmet = true; p.money = 16000;
+        p.primary = Wp.AK47; p.secondary = Wp.DEAGLE;
+        for (int w = Wp.GLOCK; w <= Wp.M249; w++) { p.clip[w] = Wp.clip[w]; p.ammo[w] = 999; }
+        p.he = 1; p.flash = 1; p.smoke = 1; p.c4 = false;
+        switchTo(p, Wp.AK47);
+        centerAll("Terminator " + (termClass == 1 ? "T-800" : termClass == 2 ? "T-1000" : "T-X") + ": kill all humans!", 5, 0xFF4040);
+        soundAll("radio_takepoint", 90);
+    }
+
+    void modesTick(float dt) {
+        if (client() || roundOver) return;
+        if (mode == 3) {
+            if (disguiseCooldown > 0) disguiseCooldown -= dt;
+            if (isDisguised) { disguiseTimer -= dt; if (disguiseTimer <= 0) { disguiseTimer = 0; isDisguised = false; } }
+            if (termCircleActive) {
+                for (int i = 0; i < pl.length; i++) {
+                    Player p = pl[i]; if (!p.alive) continue;
+                    float dx = p.ox - termX, dy = p.oy - termY;
+                    if (dx * dx + dy * dy < 100 * 100) { becomeTerminator(i); break; }
+                }
+            }
+        } else if (mode == 4) {
+            for (int i = 0; i < pl.length; i++) {
+                Player p = pl[i]; if (!p.alive || p.team != 2) continue;
+                if (p.isBot || (p.bUse && !p.usePrev)) {
+                    int best = -1; float bd = 90f * 90f;
+                    for (int h = 0; h < MAXH; h++) {
+                        if (!hAlive[h] || hRescued[h] || hFollow[h] >= 0) continue;
+                        float dx = hX[h] - p.ox, dy = hY[h] - p.oy, d = dx * dx + dy * dy;
+                        if (d < bd) { bd = d; best = h; }
+                    }
+                    if (best >= 0) { hFollow[best] = i; if (p == me) center("Hostage is following you", 2, 0x60FF60); }
+                }
+            }
+            for (int h = 0; h < MAXH; h++) {
+                if (!hAlive[h] || hRescued[h]) continue;
+                int f = hFollow[h];
+                if (f >= 0 && f < pl.length && pl[f].alive && pl[f].team == 2) {
+                    Player p = pl[f];
+                    float dx = p.ox - hX[h], dy = p.oy - hY[h], d = (float) Math.sqrt(dx * dx + dy * dy);
+                    if (d > 40) {
+                        float st = 90 * dt / (d + 0.001f);
+                        float nx = hX[h] + dx * st, ny = hY[h] + dy * st;
+                        m.trace(0, hX[h], hY[h], hZ[h] + 10, nx, ny, hZ[h] + 10);
+                        if (m.rFrac >= 0.99f) { hX[h] = nx; hY[h] = ny; }
+                        else {
+                            m.trace(0, hX[h], hY[h], hZ[h] + 10, nx, hY[h], hZ[h] + 10);
+                            if (m.rFrac >= 0.99f) hX[h] = nx;
+                            m.trace(0, hX[h], hY[h], hZ[h] + 10, hX[h], ny, hZ[h] + 10);
+                            if (m.rFrac >= 0.99f) hY[h] = ny;
+                        }
+                        hZ[h] = groundZ(hX[h], hY[h], hZ[h] + 100);
+                    }
+                    float rx = rescueX - hX[h], ry = rescueY - hY[h];
+                    if (rx * rx + ry * ry < 60 * 60) {
+                        hRescued[h] = true; hAlive[h] = false; hFollow[h] = -1;
+                        addMoney(p, 300);
+                        if (p == me) center("Hostage rescued! +$300", 3, 0x60FF60);
+                    }
+                }
+            }
+            int rescued = 0; for (int h = 0; h < MAXH; h++) if (hRescued[h]) rescued++;
+            if (rescued >= MAXH) endRound(2, "All hostages rescued! Counter-Terrorists win", "radio_ctwin", 0);
+        }
+    }
+
     void modeTick() {
         if (mode == 1) {
             if (roundOver) return;
@@ -368,9 +487,9 @@ public final class Game {
         if (sens < 1 || sens > 10) sens = 5; if (sensV < 1 || sensV > 10) sensV = 5; if (difficulty < 0 || difficulty > 3) difficulty = 1;
         if (quality < 0 || quality > 3) quality = 0; if (maxRounds < 3 || maxRounds > 30) maxRounds = 15; if (gammaIdx < 0 || gammaIdx > 4) gammaIdx = 1;
         if (crossCol < 0 || crossCol > 4) crossCol = 0; if (crossSize < 0 || crossSize > 2) crossSize = 1; if (winScale < 1 || winScale > 4) winScale = 3;
-        if (cMap < 0 || cMap > 2) cMap = 0; if (cTeam < 1 || cTeam > 3) cTeam = 3; if (cBots < 1 || cBots > 9) cBots = 9;
+        if (cMap < 0 || cMap >= MAPS.length) cMap = 0; if (cTeam < 1 || cTeam > 3) cTeam = 3; if (cBots < 1 || cBots > 9) cBots = 9;
         if (cRoundTime < 60 || cRoundTime > 300) cRoundTime = 135; if (cBuyTime < 15 || cBuyTime > 90) cBuyTime = 45; if (cFreeze < 0 || cFreeze > 10) cFreeze = 3;
-        if (cMoney < 800 || cMoney > 16000) cMoney = 800; if (layout < 0 || layout > 2) layout = 0;
+        if (cMoney < 800 || cMoney > 16000) cMoney = 800; mpMoney = cMoney; if (layout < 0 || layout > 2) layout = 0;
         boolean got = false;
         int bn = b.length > k ? b[k] : 0;   // actions in the save (older versions: fewer)
         if (bn > 0 && bn <= Binds.N && bPhone.read(b, k + 1, bn)) got = bPC.read(b, k + 1 + bn * 8, bn);
@@ -705,12 +824,12 @@ public final class Game {
             case M_MP: return new String[]{"Режим: " + MP.MODEN[mpMode], "Карта: " + MAPS[mpMap], "Ник: " + mpName,
                     "Сервер: " + (mpServer.length() == 0 ? "авто" : mpServer),
                     "> Найти игру по всему миру", "> Создать свою игру",
-                    "> Создать игру по LAN (Wi-Fi)", "> Найти игру по LAN (Wi-Fi)", "> Одиночная игра (с ботами)", "Отмена"};
+                    "> Создать игру по LAN (Wi-Fi)", "> Найти игру по LAN (Wi-Fi)", "> Одиночная игра (с ботами)", "Команда: " + (mpTeam == 1 ? "Террористы" : mpTeam == 2 ? "Спецназ" : "Автовыбор"), "Деньги за раунд: $" + mpMoney, "Отмена"};
             case M_LAN: {
                 lanList = lanFinder != null ? lanFinder.list() : new LanFinder.Game[0];
                 String[] a = new String[Math.max(1, lanList.length) + 1];
                 if (lanList.length == 0) a[0] = lanFinder != null && lanFinder.error != null ? lanFinder.error : "Ищем игры в вашей Wi-Fi сети...";
-                for (int i = 0; i < lanList.length; i++) { LanFinder.Game x = lanList[i]; a[i] = "> " + x.name + "\t" + x.players + "/10\t" + MP.MODEN[x.mode % 3] + ", " + MAPS[x.map % 3]; }
+                for (int i = 0; i < lanList.length; i++) { LanFinder.Game x = lanList[i]; a[i] = "> " + x.name + "\t" + x.players + "/10\t" + MP.MODEN[Math.min(x.mode % 5, MP.MODEN.length-1)] + ", " + MAPS[x.map % MAPS.length]; }
                 a[a.length - 1] = "Отмена";
                 return a;
             }
@@ -760,7 +879,7 @@ public final class Game {
                     pc ? "Схема: " + (pcMouse ? "клавиатура + мышь" : "как на телефоне, " + layoutName()) : "Раскладка: " + layoutName(),
                     "Чувствительность: " + sens, "Вверх/вниз: " + sensV, (pc && pcMouse ? "Инверсия мыши: " : "Инверсия взгляда: ") + onoff(invert),
                     "Помощь прицеливания: " + onoff(autoAim), "OK"};
-            case M_LANG: return new String[]{(Lang.lang == Lang.EN ? "> " : "   ") + "English", (Lang.lang == Lang.RU ? "> " : "   ") + "Русский", "OK"};
+            case M_LANG: return new String[]{(Lang.lang == Lang.EN ? "> " : "   ") + "English", (Lang.lang == Lang.RU ? "> " : "   ") + "Russian", (Lang.lang == Lang.FR ? "> " : "   ") + "Francais", (Lang.lang == Lang.DE ? "> " : "   ") + "Deutsch", (Lang.lang == Lang.JA ? "> " : "   ") + "Japanese", (Lang.lang == Lang.VI ? "> " : "   ") + "Vietnamese", "OK"};
             case M_SND: return new String[]{"Звук: " + onoff(soundOn), "Громкость: " + volume + "%", "Голосовой чат: " + onoff(voiceOn), "Громкость голоса: " + voiceVol + "%", micTestLabel(), "OK"};
             case M_FIRST1: return pc ? new String[]{"Клавиатура + мышь (как в CS)", "Как на телефоне (цифры и стрелки)"}
                     : new String[]{"Классика: 2468 ходьба", "Альтернатива: джойстик ходьба"};
@@ -807,12 +926,14 @@ public final class Game {
     boolean changeOpt(int dir) {
         switch (menu) {
             case M_MP:
-                if (menuSel == 0) { mpMode = (mpMode + 3 + dir) % 3; return true; }
-                if (menuSel == 1) { mpMap = (mpMap + 3 + dir) % 3; return true; }
+                if (menuSel == 0) { mpMode = (mpMode + 5 + dir) % 5; return true; }
+                if (menuSel == 1) { mpMap = (mpMap + MAPS.length + dir) % MAPS.length; return true; }
+                if (menuSel == 9) { mpTeam = (mpTeam + 2 + dir) % 3 + 1; saveSettings(); return true; }
+                if (menuSel == 10) { mpMoney += dir * (mpMoney >= 4000 ? 1000 : 400); if (mpMoney > 16000) mpMoney = 800; if (mpMoney < 800) mpMoney = 16000; cMoney = mpMoney; saveSettings(); return true; }
                 return false;
             case M_CREATE:
                 switch (menuSel) {
-                    case 0: cMap = (cMap + 3 + dir) % 3; return true;
+                    case 0: cMap = (cMap + MAPS.length + dir) % MAPS.length; return true;
                     case 1: cTeam = (cTeam + 2 + dir) % 3 + 1; return true;
                     case 2: difficulty = (difficulty + 4 + dir) % 4; return true;
                     case 3: cBots += dir; if (cBots > 9) cBots = 1; if (cBots < 1) cBots = 9; return true;
@@ -934,14 +1055,14 @@ public final class Game {
                 else if (menuSel == 5) startSearch(true);
                 else if (menuSel == 6) startLan();
                 else if (menuSel == 7) { lanFinder = new LanFinder(); menu = M_LAN; menuSel = 0; }
-                else if (menuSel == 8) { resetCreate(); mode = mpMode; cMap = mpMap; startMatch(mpMap, mode == 2 ? 2 : 1 + (rnd.nextInt() & 1)); }
-                else if (menuSel == 9) { menu = M_MAIN; menuSel = 1; }
+                else if (menuSel == 8) { resetCreate(); mode = mpMode; cMap = mpMap; cMoney = mpMoney; saveSettings(); startMatch(mpMap, mode == 2 ? 2 : (mpTeam == 3 ? 1 + (rnd.nextInt() & 1) : mpTeam)); }
+                else if (menuSel == 11) { menu = M_MAIN; menuSel = 1; }
                 break;
             case M_LAN:
                 if (menuSel < lanList.length) {
                     LanFinder.Game x = lanList[menuSel];
                     closeFinder();
-                    mpMode = x.mode % 3; mpMap = x.map % 3; mpErr = null; mpCreate = false;
+                    mpMode = x.mode % 5; mpMap = x.map % MAPS.length; mpErr = null; mpCreate = false;
                     mp = new MP(this, x.ip + ":" + x.port, mpMode, mpMap, mpName, false); mp.lanGame = true;
                     menu = M_SEARCH; menuSel = 0;
                 } else if (menuSel == lanList.length || lanList.length == 0 && menuSel == 1) { closeFinder(); menu = M_MP; menuSel = 7; }
@@ -970,8 +1091,10 @@ public final class Game {
                 if (menuSel == 3) { menu = M_PAUSE; menuSel = 1; break; }
                 switchTeam(menuSel == 2 ? 1 + (rnd.nextInt() & 1) : menuSel + 1); menu = M_NONE; break;
             case M_LANG:
-                if (menuSel < 2) { Lang.set(menuSel == 0 ? Lang.EN : Lang.RU); saveSettings(); uiClick(); }
-                else closeOptions();
+                if (menuSel <= 5) {
+                    int l = menuSel; Lang.set(l);
+                    saveSettings(); uiClick();
+                } else closeOptions();
                 break;
             case M_GFX: case M_CTRL: case M_SND:
                 if (menu == M_SND && menuSel == 4) { micTest(); break; }
@@ -1015,7 +1138,7 @@ public final class Game {
     static final String[] OPT_TAB_SHORT = {"Видео", "Упр.", "Клав.", "Звук", "Язык"};
     public boolean tabFocus; int optReturnSel;
     int optTab() { for (int i = 0; i < OPT_TABS.length; i++) if (OPT_TABS[i] == menu) return i; return -1; }
-    void switchTab(int t) { int n = OPT_TABS.length; t = (t + n) % n; menu = OPT_TABS[t]; menuSel = Lang.lang == Lang.RU && menu == M_LANG ? 1 : 0; uiRoll(); }
+    void switchTab(int t) { int n = OPT_TABS.length; t = (t + n) % n; menu = OPT_TABS[t]; menuSel = (menu == M_LANG) ? Math.min(Math.max(Lang.lang,0),5) : 0; uiRoll(); }
     void openOptions(int ret) { optReturn = ret; optReturnSel = menuSel; menu = M_GFX; menuSel = 0; tabFocus = false; }
     void closeOptions() { saveSettings(); menu = optReturn; menuSel = optReturnSel; tabFocus = false; bindCapture = -1; }
     void uiRoll() { if (soundOn) Sys.s.sound("ui_buttonrollover", volume * 6 / 10); }
@@ -1040,6 +1163,14 @@ public final class Game {
     }
     /** platform calls this first for every key press; returns true when the key was consumed (binding mode) */
     public boolean rawKey(int code) {
+        if (bindCapture < 0 && mode == 3 && state == ST_PLAY && terminatorIdx >= 0 && me == pl[terminatorIdx]
+                && (code == 'q' || code == 'Q') && (termClass == 2 || termClass == 3) && disguiseCooldown <= 0) {
+            isDisguised = true;
+            disguiseTimer = termClass == 3 ? 30 : 20;
+            disguiseCooldown = termClass == 3 ? 30 : 45;
+            center("Disguise active", 2, 0x60FF60);
+            return true;
+        }
         if (bindCapture < 0) return false;
         if (System.currentTimeMillis() > bindUntil) { bindCapture = -1; return false; }
         if (pc && pcMouse && code == 27) { bindCapture = -1; return true; }   // Esc cancels on PC
@@ -1063,6 +1194,7 @@ public final class Game {
 
     void doLoad() throws IOException {
         mapName = MAPS[mapIdx];
+        if (mode == 0 && (mapName.equals("cs_italy") || mapName.equals("cs_office") || mapName.equals("cs_assault") || mapName.equals("cs_mansion"))) mode = 4;
         m = null; nav = null; r.m = null;
         for (int i = 0; i < vws.length; i++) vws[i] = null;
         System.gc();
@@ -1236,6 +1368,7 @@ public final class Game {
             int pick = (rnd.nextInt() & 0xFFFF) % nTerr;
             for (int i = 0; i < pl.length; i++) if (pl[i].team == 1 && pick-- == 0) { pl[i].c4 = true; break; }
         }
+        modesNewRound();
         specIdx = -1; buyOpen = false;
         centerAll(mode == 1 ? "Дезматч: 10 минут, возрождение через 3 с" : mode == 2 ? "Раунд " + round + ": через 14 с один станет зомби. Продержитесь 5 минут!" : "Раунд " + round, 3, 0xFFFFFF);
         if (!first) soundAll("radio_moveout", 70);
@@ -1288,6 +1421,17 @@ public final class Game {
             if (time > freezeEnd + roundTime) endRound(2, "Люди продержались 5 минут и победили!", "radio_ctwin", 0);
             return;
         }
+        if (mode == 3) {
+            if (terminatorIdx < 0) return;   // still waiting for the first player/bot to touch the circle
+            if (!pl[terminatorIdx].alive) { endRound(2, "Terminator destroyed! Humans win", "radio_ctwin", 0); return; }
+            int humans = 0; for (int i = 0; i < pl.length; i++) if (i != terminatorIdx && pl[i].alive) humans++;
+            if (humans == 0) { endRound(1, "Terminator wins!", "radio_terwin", 0); return; }
+            return;
+        }
+        if (mode == 4) {
+            if (time > freezeEnd + roundTime) endRound(1, "Time is up. Terrorists win!", "radio_terwin", 0);
+            return;
+        }
         if (bombExploded) { endRound(1, "Цель уничтожена! Террористы победили", "radio_terwin", 1); return; }
         if (aC == 0 && nC > 0) { endRound(1, "Террористы победили!", "radio_terwin", 0); return; }
         if (aT == 0 && nT > 0 && !bombPlanted) { endRound(2, "Спецназ победил!", "radio_ctwin", 0); return; }
@@ -1326,12 +1470,18 @@ public final class Game {
         // human input
         humanInput(dt);
         // bots
-        for (int i = 0; i < pl.length; i++) if (pl[i].ai != null && pl[i].alive && (auth() || pl[i] == me)) pl[i].ai.think(dt);
+        for (int i = 0; i < pl.length; i++) if (pl[i].ai != null && pl[i].alive && (auth() || pl[i] == me)) {
+            if (mode == 3 && termCircleActive) {
+                Player b = pl[i];
+                b.yaw = (float) (atan2(termY - b.oy, termX - b.ox));
+                b.fmove = 260; b.smove = 0; b.bFire = false; b.bUse = false;
+            } else pl[i].ai.think(dt);
+        }
         // players
         boolean cl = client();
         for (int i = 0; i < pl.length; i++) if (!cl || pl[i] == me) updatePlayer(pl[i], dt);
         updateGrenades(dt);
-        if (!cl) { updateDrops(dt); updateBomb(dt); modeTick(); }
+        if (!cl) { updateDrops(dt); if (mode != 3 && mode != 4) updateBomb(dt); modeTick(); modesTick(dt); }
         for (int i = 0; i < rqP.length; i++) if (rqP[i] != null && time >= rqT[i]) { Player q = rqP[i]; rqP[i] = null; radio(q, rqCmd[i]); }
         if (!roundOver && !cl) checkRoundEnd();
         if (roundOver && time > roundEndAt && !cl) {
@@ -1748,6 +1898,12 @@ public final class Game {
 
     public void damage(Player v, Player att, int d, int weapon, boolean hs, int group) {
         if (!v.alive || client()) return;
+        if (mode == 3 && att != null && att != v && terminatorIdx >= 0) {
+            boolean atTerm = (att == pl[terminatorIdx]);
+            boolean vTerm = (v == pl[terminatorIdx]);
+            if (atTerm == vTerm) return;   // humans never damage humans in Terminator mode
+            if (atTerm) d = (int) (d * 2.5f);
+        }
         if (mode == 2 && att != null && att != v) {
             if (att.zombie && !v.zombie) {   // a zombie claw: damage by type, the last hit infects
                 if (weapon != Wp.KNIFE) return;
@@ -1790,6 +1946,7 @@ public final class Game {
     void kill(Player v, Player att, int weapon, boolean hs) {
         if (client()) return;
         if (mode == 1 && att != null && att != v && att.team != v.team) { if (att.team == 1) scoreT++; else scoreCT++; }
+        if (mode == 3 && att != null && terminatorIdx >= 0 && att == pl[terminatorIdx] && isDisguised) { isDisguised = false; disguiseTimer = 0; }
         v.alive = false; v.health = 0; v.deaths++; v.deathTime = time; v.animTime = 0;
         v.deathAnim = hs ? 1 : 0; v.planting = v.defusing = false;
         sound(v, (rnd.nextInt() & 1) == 0 ? "player_die1" : "player_die3", 80);
@@ -2600,7 +2757,21 @@ public final class Game {
         }
     }
 
+    void drawStandFigure(float x, float y, float z, boolean hostage) {
+        if (use3D()) { drawStatic3D(hostage ? "pl_t" : "pl_ct", x, y, z + 1, 0); return; }
+        loadSprites();
+        Sprites s = hostage ? sprT : sprCT; int an = s.find("stand");
+        int lev = m.lightAt(x, y, z - 20); int[] pal = s.lit(Math.min(63, lev + 4));
+        int idx = 0;
+        r.drawSprite(s.data[an][idx], s.fw[an][idx], s.fh[an][idx], pal, x, y, z,
+                     s.ax - s.fx[an][idx], s.ay - s.fy[an][idx], s.ppu);
+    }
+
     void drawWorldFx() {
+        if (mode == 3 && termCircleActive && !roundOver) drawStandFigure(termX, termY, termZ, false);
+        if (mode == 4) {
+            for (int h = 0; h < MAXH; h++) if (hAlive[h] && !hRescued[h]) drawStandFigure(hX[h], hY[h], hZ[h], true);
+        }
         for (int i = 0; i < MAXFX && gfx > 0; i++) {
             float age = time - fxT[i];
             if (fxLife[i] <= 0 || age > fxLife[i] || age < 0) continue;
@@ -3205,6 +3376,7 @@ public final class Game {
                 gx.text(gx.f1, nm, x + 12, ry, c);
                 gx.text(gx.f1, "" + p.kills, cS + 6, ry, c);
                 gx.text(gx.f1, "" + p.deaths, cD + 6, ry, c);
+                gx.text(gx.f1, "$" + p.money, cD + 16, ry, c);
                 gx.text(gx.f1, p.isBot ? "BOT" : p == me ? "Вы" : "—", cL, ry, c);
                 ry += 11;
             }

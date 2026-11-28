@@ -118,6 +118,7 @@ h.append('/* Generated from lang/translations_data.py by lang/build_lang.py */')
 h.append('#ifndef LANGDATA_H')
 h.append('#define LANGDATA_H')
 h.append('#include <e32std.h>')
+h.append('static const TInt KLangCount = %d;' % len(RU))
 h.append('')
 arrs = [("KRussianText", RU), ("KEnglishText", EN), ("KFrenchText", FR), ("KGermanText", DE), ("KJapaneseText", JA), ("KVietnameseText", VI)]
 for aname, arr in arrs:

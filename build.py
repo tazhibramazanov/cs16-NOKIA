@@ -19,7 +19,7 @@ RES = os.path.join(ROOT, 'res')
 WIN = os.name == 'nt'
 EXE = '.exe' if WIN else ''
 VERSION = '1.2.0'
-MAPS = ['de_dust2', 'de_dust', 'de_train']
+MAPS = ['de_dust2', 'de_dust', 'de_train', 'de_inferno', 'de_nuke', 'de_aztec', 'de_cbble', 'cs_italy', 'cs_office', 'cs_assault', 'cs_mansion']
 REAL_SDK_ROOT = r'C:\S60\devices\S60_3rd_FP2_SDK_v1.1'
 
 MAVENS = ['https://repo1.maven.org/maven2/',                        # Maven Central and its mirrors, tried in order

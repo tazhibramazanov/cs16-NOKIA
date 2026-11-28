@@ -19,9 +19,9 @@ public final class Bot {
 
     /** every armed bot plays like a beatable human, not a squad of pros (zombies keep their speed) */
     boolean zHuman() { return !p.zombie; }
-    float react() { int d = g.difficulty; float r = d == 0 ? 0.65f : d == 1 ? 0.38f : d == 2 ? 0.22f : 0.14f; return zHuman() ? r * 2.4f + 0.3f : r; }
-    float turnSpeed() { int d = g.difficulty; float t = d == 0 ? 220 : d == 1 ? 340 : d == 2 ? 520 : 720; return zHuman() ? t * 0.55f : t; }
-    float aimErr() { int d = g.difficulty; float e = d == 0 ? 5f : d == 1 ? 3f : d == 2 ? 1.6f : 0.9f; return zHuman() ? e * 2.6f + 2 : e; }
+    float react() { int d = g.difficulty; float r = d == 0 ? 0.65f : d == 1 ? 0.38f : d == 2 ? 0.22f : 0.14f; return zHuman() ? r * 1.5f + 0.12f : r; }
+    float turnSpeed() { int d = g.difficulty; float t = d == 0 ? 220 : d == 1 ? 340 : d == 2 ? 520 : 720; return zHuman() ? t * 0.8f : t; }
+    float aimErr() { int d = g.difficulty; float e = d == 0 ? 5f : d == 1 ? 3f : d == 2 ? 1.6f : 0.9f; return zHuman() ? e * 1.4f + 0.5f : e; }
 
     // radio-driven behaviour
     Player leader; float followUntil, holdHereUntil;
@@ -143,14 +143,20 @@ public final class Bot {
             for (int i = 0; i < g.pl.length; i++) {
                 Player q = g.pl[i];
                 if (!q.alive || q.team == p.team) continue;
+                if (g.mode == 3) {
+                    if (g.terminatorIdx < 0 || g.terminatorIdx >= g.pl.length) continue;
+                    boolean selfTerm = g.pl[g.terminatorIdx] == p;
+                    boolean otherTerm = g.pl[g.terminatorIdx] == q;
+                    if (selfTerm == otherTerm) continue;   // 1 Terminator vs all humans: humans never target each other
+                }
                 if (q == ignore && g.time < ignoreUntil) continue;
                 float dx = q.ox - p.ox, dy = q.oy - p.oy, dz = q.oz - p.oz;
                 float d = dx * dx + dy * dy + dz * dz;
-                if (d > 3500f * 3500f) continue;
+                if (d > 4500f * 4500f) continue;
                 float dl = (float) Math.sqrt(d);
                 float dot = (dx * fw[0] + dy * fw[1] + dz * fw[2]) / Math.max(1, dl);
                 boolean recentlyHurt = q.id == p.lastAttacker && g.time - p.lastHurt < 1.5f;
-                if (dot < 0.25f && !recentlyHurt && dl > 250) continue;
+                if (dot < 0.10f && !recentlyHurt && dl > 200) continue;
                 if (blind) continue;
                 if (!g.visible(p, q)) continue;
                 if (d < bd) { bd = d; best = q; }
@@ -215,7 +221,7 @@ public final class Bot {
                         pi++;
                         if (nav.cz[nx] - (p.oz - (p.ducked ? 18 : 36)) > 22 && p.onGround) { p.bJump = true; }
                         if ((nav.attr[nx] & 1) != 0) duckUntil = g.time + 1.2f;
-                        if ((nav.attr[nx] & 2) != 0 && p.onGround) { p.bJump = true; }
+                        if ((nav.attr[nx] & 2) != 0 && p.onGround && nav.cz[nx] - (p.oz - (p.ducked ? 18 : 36)) < 40) { p.bJump = true; }
                     }
                 } else {
                     tx = nav.cx[cur]; ty = nav.cy[cur];
@@ -367,6 +373,41 @@ public final class Bot {
         if (g.mode == 1) {   // deathmatch: roam the map, no bomb-site camping
             leader = null; holdHereUntil = 0;
             if (wanderGoal()) return;
+        }
+        if (g.mode == 3) {   // terminator: run to the exosuit, then hunt
+            leader = null; holdHereUntil = 0;
+            if (g.termCircleActive) { if (go(nav.find(g.termX, g.termY, g.termZ - 36))) { repathAt = g.time + 1.5f; return; } }
+            if (g.terminatorIdx >= 0 && g.terminatorIdx < g.pl.length) {
+                if (g.pl[g.terminatorIdx] == p) {
+                    Player hunt = null; float bd = 1e12f;
+                    for (int i = 0; i < g.pl.length; i++) {
+                        Player q = g.pl[i]; if (!q.alive || q == p) continue;
+                        float dx = q.ox - p.ox, dy = q.oy - p.oy, d = dx * dx + dy * dy;
+                        if (d < bd) { bd = d; hunt = q; }
+                    }
+                    if (hunt != null && go(nav.find(hunt.ox, hunt.oy, hunt.oz - 36))) { repathAt = g.time + 2; return; }
+                } else {
+                    Player term = g.pl[g.terminatorIdx];
+                    if (term.alive && go(nav.find(term.ox, term.oy, term.oz - 36))) { repathAt = g.time + 1.5f; return; }
+                }
+            }
+        }
+        if (g.mode == 4) {   // hostage rescue: escort hostages to the CT zone (or fetch one)
+            leader = null; holdHereUntil = 0;
+            float tx = g.rescueX, ty = g.rescueY, tz = g.rescueZ;
+            boolean escort = false;
+            for (int h = 0; h < g.MAXH; h++) {
+                if (g.hAlive[h] && !g.hRescued[h] && g.hFollow[h] >= 0 && g.hFollow[h] < g.pl.length && g.pl[g.hFollow[h]] == p) { escort = true; break; }
+            }
+            if (!escort) {
+                float bd = 1e12f;
+                for (int h = 0; h < g.MAXH; h++) {
+                    if (!g.hAlive[h] || g.hRescued[h] || g.hFollow[h] >= 0) continue;
+                    float dx = g.hX[h] - p.ox, dy = g.hY[h] - p.oy, d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; tx = g.hX[h]; ty = g.hY[h]; tz = g.hZ[h]; }
+                }
+            }
+            if (go(nav.find(tx, ty, tz - 36))) { repathAt = g.time + 2; return; }
         }
         if (leader != null && leader.alive && g.time < followUntil && task != 3 && !(p.c4 && !g.bombPlanted && false)) {
             float dx = leader.ox - p.ox, dy = leader.oy - p.oy;

@@ -1537,7 +1537,7 @@ void CGame::StartMatch(TInt aMapIndex, TInt aTeam)
     {
     iPendingMap = Clamp(aMapIndex, 0, KMapCount - 1);
     iPendingTeam = Clamp(aTeam, 1, 3);
-    if (iPendingMap == 7 || iPendingMap == 8 || iPendingMap == 9 || iPendingMap == 10) iMode = 4;
+    if (iMode == 0 && (iPendingMap == 7 || iPendingMap == 8 || iPendingMap == 9 || iPendingMap == 10)) iMode = 4;
     gState.iMode = Clamp(iMode, 0, 4);
     gState.iMapIndex = iPendingMap;
     gState.iPendingTeam = iPendingTeam;
@@ -1954,7 +1954,32 @@ void CGame::NewRound(TBool aFirst)
     iTerminatorIdx = -1; iTerminatorClass = 0;
     iDisguiseTimer = 0; iDisguiseCooldown = 0; iIsDisguised = EFalse;
     // place circle near map center
-    if (iTermCircleActive) { iTermCircleX = 0; iTermCircleY = 0; iTermCircleZ = GroundHeight(0,0,0); }
+    if (iTermCircleActive)
+        {
+        iTermCircleX = 0; iTermCircleY = 0; iTermCircleZ = 0;
+        TInt best = -1; TReal32 bestD = -1.0f;
+        if (gNav && gNav->iCount > 0 && iAssets.iMap)
+            {
+            for (TInt a = 0; a < gNav->iCount; a++)
+                {
+                const TReal32 x = gNav->iCX[a], y = gNav->iCY[a], z = gNav->ZAt(a, x, y);
+                iAssets.iMap->Trace(0, x, y, z + 30.0f, x, y, z - 50.0f);
+                if (iAssets.iMap->rStartSolid) continue;
+                TReal32 nearest = 1e12f;
+                for (TInt j = 0; j < iPlayerCount; j++)
+                    {
+                    if (!iPlayers[j].iAlive) continue;
+                    const TReal32 dx = x - iPlayers[j].iX, dy = y - iPlayers[j].iY;
+                    const TReal32 dd = dx*dx + dy*dy;
+                    if (dd < nearest) nearest = dd;
+                    }
+                if (nearest > bestD) { bestD = nearest; best = a; }
+                }
+            }
+        if (best >= 0) { iTermCircleX = gNav->iCX[best]; iTermCircleY = gNav->iCY[best]; iTermCircleZ = gNav->ZAt(best, gNav->iCX[best], gNav->iCY[best]); }
+        else if (gState.iSpawnCTCount > 0) { iTermCircleX = gState.iSpawnCT[0]; iTermCircleY = gState.iSpawnCT[1]; iTermCircleZ = gState.iSpawnCT[2]; }
+        iTermCircleZ = GroundHeight(iTermCircleX, iTermCircleY, iTermCircleZ + 100.0f);
+        }
     // Hostage Rescue init
     for (TInt h = 0; h < KMaxHostages; h++) { iHostageAlive[h] = EFalse; iHostageRescued[h] = EFalse; iHostageFollowIdx[h] = -1; iHostageX[h]=0; iHostageY[h]=0; iHostageZ[h]=0; }
     if (iMode == 4)
@@ -2195,7 +2220,8 @@ void CGame::CheckRoundEnd()
     if (iMode == 3)
         {
         const TInt termIdx = (iTerminatorIdx >= 0 && iTerminatorIdx < iPlayerCount) ? iTerminatorIdx : -1;
-        if (termIdx >= 0 && !iPlayers[termIdx].iAlive) { EndRound(2, _L("Terminator killed! Humans win!"), Ascii("radio_ctwin"), 0); return; }
+        if (termIdx < 0) return;   // wait until somebody enters the circle
+        if (!iPlayers[termIdx].iAlive) { EndRound(2, _L("Terminator killed! Humans win!"), Ascii("radio_ctwin"), 0); return; }
         TInt aliveHumans = 0;
         for (TInt i = 0; i < iPlayerCount; i++) if (i != termIdx && iPlayers[i].iAlive) aliveHumans++;
         if (termIdx >= 0 && aliveHumans == 0) { EndRound(1, _L("Terminator wins!"), Ascii("radio_terwin"), 0); return; }
@@ -4122,6 +4148,61 @@ static void BotChooseGoal(CGame& aGame, TPlayer& aPlayer, TExtraPlayer& aExtra, 
         aExtra.iHoldHereUntil = 0;
         if (BotWanderGoal(aGame, aPlayer, aExtra)) return;
         }
+    if (mode == 3)
+        {
+        aExtra.iLeader = -1;
+        aExtra.iHoldHereUntil = 0;
+        if (aGame.iTermCircleActive && gNav && BotGo(aGame, aPlayer, aExtra, gNav->Find(aGame.iTermCircleX, aGame.iTermCircleY, aGame.iTermCircleZ - 36.0f)))
+            { aExtra.iRepathAt = aGame.iTime + 1.5f; return; }
+        if (aGame.iTerminatorIdx >= 0 && aGame.iTerminatorIdx < aGame.iPlayerCount)
+            {
+            TPlayer& term = aGame.iPlayers[aGame.iTerminatorIdx];
+            if (&aPlayer == &term)
+                {
+                TPlayer* target = NULL; TReal32 bd = 1e12f;
+                for (TInt i = 0; i < aGame.iPlayerCount; i++)
+                    {
+                    TPlayer& q = aGame.iPlayers[i];
+                    if (!q.iAlive || &q == &aPlayer) continue;
+                    const TReal32 dx = q.iX - aPlayer.iX, dy = q.iY - aPlayer.iY;
+                    const TReal32 d = dx*dx + dy*dy;
+                    if (d < bd) { bd = d; target = &q; }
+                    }
+                if (target && gNav && BotGo(aGame, aPlayer, aExtra, gNav->Find(target->iX, target->iY, target->iZ - 36.0f)))
+                    { aExtra.iRepathAt = aGame.iTime + 2.0f; return; }
+                }
+            else if (term.iAlive && gNav && BotGo(aGame, aPlayer, aExtra, gNav->Find(term.iX, term.iY, term.iZ - 36.0f)))
+                { aExtra.iRepathAt = aGame.iTime + 1.5f; return; }
+            }
+        }
+    if (mode == 4 && aPlayer.iTeam == 2)
+        {
+        aExtra.iLeader = -1;
+        aExtra.iHoldHereUntil = 0;
+        TBool escort = EFalse;
+        for (TInt h = 0; h < aGame.KMaxHostages; h++)
+            {
+            const TInt f = aGame.iHostageFollowIdx[h];
+            if (aGame.iHostageAlive[h] && !aGame.iHostageRescued[h] && f >= 0 && f < aGame.iPlayerCount && &aGame.iPlayers[f] == &aPlayer) { escort = ETrue; break; }
+            }
+        TReal32 tx = aGame.iRescueZoneX, ty = aGame.iRescueZoneY, tz = aGame.iRescueZoneZ;
+        if (!escort)
+            {
+            TReal32 bd = 1e12f;
+            for (TInt h = 0; h < aGame.KMaxHostages; h++)
+                {
+                if (!aGame.iHostageAlive[h] || aGame.iHostageRescued[h] || aGame.iHostageFollowIdx[h] >= 0) continue;
+                const TReal32 dx = aGame.iHostageX[h] - aPlayer.iX, dy = aGame.iHostageY[h] - aPlayer.iY;
+                const TReal32 d = dx * dx + dy * dy;
+                if (d < bd) { bd = d; tx = aGame.iHostageX[h]; ty = aGame.iHostageY[h]; tz = aGame.iHostageZ[h]; }
+                }
+            }
+        if (gNav && BotGo(aGame, aPlayer, aExtra, gNav->Find(tx, ty, tz - 36.0f)))
+            {
+            aExtra.iRepathAt = aGame.iTime + 2.0f;
+            return;
+            }
+        }
     if (aExtra.iLeader >= 0 && aExtra.iLeader < KMaxPlayers && aExtra.iFollowUntil > aGame.iTime && aExtra.iTask != 3)
         {
         TPlayer* leader = PlayerIndexById(aGame, aExtra.iLeader) >= 0
@@ -4882,11 +4963,11 @@ void CGame::BotThink(TPlayer& aPlayer, TReal32 aDelta)
         }
     const TBool zHuman = !x.iZombie;
     TReal32 react = iDifficulty == 0 ? 0.65f : (iDifficulty == 1 ? 0.38f : (iDifficulty == 2 ? 0.22f : 0.14f));
-    react = zHuman ? react * 2.4f + 0.3f : react;
+    react = zHuman ? react * 1.5f + 0.12f : react;
     TReal32 turnSpeed = iDifficulty == 0 ? 220.0f : (iDifficulty == 1 ? 340.0f : (iDifficulty == 2 ? 520.0f : 720.0f));
-    turnSpeed = zHuman ? turnSpeed * 0.55f : turnSpeed;
+    turnSpeed = zHuman ? turnSpeed * 0.8f : turnSpeed;
     TReal32 aimError = iDifficulty == 0 ? 5.0f : (iDifficulty == 1 ? 3.0f : (iDifficulty == 2 ? 1.6f : 0.9f));
-    aimError = zHuman ? aimError * 2.6f + 2.0f : aimError;
+    aimError = zHuman ? aimError * 1.4f + 0.5f : aimError;
     if (iTime < iFreezeEnd)
         {
         if (!x.iBought && iTime > iRoundStart + 0.5f + (aPlayer.iId % 5) * 0.2f)
@@ -4907,6 +4988,13 @@ void CGame::BotThink(TPlayer& aPlayer, TReal32 aDelta)
             {
             TPlayer& other = iPlayers[i];
             if (!other.iAlive || other.iTeam == aPlayer.iTeam || &other == &aPlayer) continue;
+            if (iMode == 3)
+                {
+                if (iTerminatorIdx < 0 || iTerminatorIdx >= iPlayerCount) continue;
+                const TBool selfTerm = (&aPlayer == &iPlayers[iTerminatorIdx]);
+                const TBool otherTerm = (&other == &iPlayers[iTerminatorIdx]);
+                if (selfTerm == otherTerm) continue;   // 1 Terminator vs all humans
+                }
             if (x.iIgnore == other.iId && iTime < x.iIgnoreUntil) continue;
             const TReal32 dx = other.iX - aPlayer.iX;
             const TReal32 dy = other.iY - aPlayer.iY;
@@ -6260,11 +6348,11 @@ void CGame::Tick(TReal32 aDelta)
                     {
                     iTermCircleActive = EFalse;
                     iTerminatorIdx = i;
-                    // pick class
-                    TReal32 r = iRandom.NextReal();
-                    if (r < 0.7f) iTerminatorClass = 1;
-                    else if (r < 0.9f) iTerminatorClass = 2;
-                    else iTerminatorClass = 3;
+                    // pick class: 70% T-800, 20% T-1000, 10% T-X
+                    TInt roll = (iRandom.Next() & 0x7FFFFFFF) % 100;
+                    iTerminatorClass = roll < 70 ? 1 : (roll < 90 ? 2 : 3);
+                    p.iTeam = 1;
+                    for (TInt q = 0; q < iPlayerCount; q++) if (q != i) iPlayers[q].iTeam = 2;
                     // set stats
                     if (iTerminatorClass == 1) p.iHealth = 1500;
                     else if (iTerminatorClass == 2) p.iHealth = 2500;
@@ -6273,7 +6361,7 @@ void CGame::Tick(TReal32 aDelta)
                     // give all weapons (simplified: set primary/secondary to strong ones)
                     p.iPrimary = 16; p.iSecondary = 6; // AK47, Deagle as example
                     p.iWeapon = p.iPrimary;
-                    Center(_L("Terminator spawned!"), 3.0f, 0xFF4444);
+                    Center(_L("Terminator: kill all humans!"), 4.0f, 0xFF4444);
                     break;
                     }
                 }
@@ -6287,9 +6375,9 @@ void CGame::Tick(TReal32 aDelta)
             {
             TPlayer& pl = iPlayers[pi];
             if (!pl.iAlive || pl.iTeam != 2) continue;
-            if (!Ex(pl).iUse) continue;
-            // find nearest free hostage
-            TReal32 bestd = 80.0f; TInt besth = -1;
+            if (!pl.iBot && !Ex(pl).iUse) continue;
+            // find nearest free hostage (bots pick up automatically within a larger radius)
+            TReal32 bestd = 90.0f; TInt besth = -1;
             for (TInt h = 0; h < KMaxHostages; h++)
                 {
                 if (!iHostageAlive[h] || iHostageRescued[h] || iHostageFollowIdx[h] >= 0) continue;
@@ -6304,6 +6392,18 @@ void CGame::Tick(TReal32 aDelta)
             {
             if (!iHostageAlive[h] || iHostageRescued[h]) continue;
             TInt fidx = iHostageFollowIdx[h];
+            if (fidx < 0)
+                {
+                TInt best = -1; TReal32 bd = 1e12f;
+                for (TInt i = 0; i < iPlayerCount; i++)
+                    {
+                    if (!iPlayers[i].iAlive || iPlayers[i].iTeam != 2) continue;
+                    const TReal32 dx = iHostageX[h] - iPlayers[i].iX, dy = iHostageY[h] - iPlayers[i].iY;
+                    const TReal32 dd = dx*dx + dy*dy;
+                    if (dd < bd) { bd = dd; best = i; }
+                    }
+                fidx = best; iHostageFollowIdx[h] = best;
+                }
             if (fidx >= 0 && fidx < iPlayerCount && iPlayers[fidx].iAlive && iPlayers[fidx].iTeam == 2)
                 {
                 TPlayer& fol = iPlayers[fidx];
@@ -6312,8 +6412,21 @@ void CGame::Tick(TReal32 aDelta)
                 if (dist > 40.0f)
                     {
                     const TReal32 spd = 60.0f * dt;
-                    iHostageX[h] += (dx / (dist + 0.001f)) * spd;
-                    iHostageY[h] += (dy / (dist + 0.001f)) * spd;
+                    const TReal32 nx = iHostageX[h] + (dx / (dist + 0.001f)) * spd;
+                    const TReal32 ny = iHostageY[h] + (dy / (dist + 0.001f)) * spd;
+                    if (iAssets.iMap)
+                        {
+                        iAssets.iMap->Trace(0, iHostageX[h], iHostageY[h], iHostageZ[h] + 10.0f, nx, ny, iHostageZ[h] + 10.0f);
+                        if (iAssets.iMap->rFrac >= 0.99f) { iHostageX[h] = nx; iHostageY[h] = ny; }
+                        else
+                            {
+                            iAssets.iMap->Trace(0, iHostageX[h], iHostageY[h], iHostageZ[h] + 10.0f, nx, iHostageY[h], iHostageZ[h] + 10.0f);
+                            if (iAssets.iMap->rFrac >= 0.99f) iHostageX[h] = nx;
+                            iAssets.iMap->Trace(0, iHostageX[h], iHostageY[h], iHostageZ[h] + 10.0f, iHostageX[h], ny, iHostageZ[h] + 10.0f);
+                            if (iAssets.iMap->rFrac >= 0.99f) iHostageY[h] = ny;
+                            }
+                        }
+                    else { iHostageX[h] = nx; iHostageY[h] = ny; }
                     iHostageZ[h] = GroundHeight(iHostageX[h], iHostageY[h], 0);
                     }
                 // check rescue zone
